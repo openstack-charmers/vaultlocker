@@ -13,7 +13,10 @@
 import argparse
 import hashlib
 import hvac
+import logging
 import os
+import socket
+import time
 
 
 def _vault_client(vault, token):
@@ -48,10 +51,17 @@ def _get_files_at_path(path):
 
 
 def _make_file_link(f, destination, client):
-    digest = hashlib.sha1(f).hexdigest()
-    with open(f, 'r') as input_file:
-        client.write('secret/{}'.format(digest), input_file.read())
-    stored_file = client.read('secret/{}'.format(digest))
+    hasher = hashlib.sha256()
+    hasher.update(socket.gethostname())
+    hasher.update(f)
+    digest = hasher.hexdigest()
+    logging.info('Storing secret {} in vault'.format(digest))
+    with open(f, 'rb') as input_file:
+        input_data = input_file.read()
+        client.write('secret/{}'.format(digest), value=input_data)
+        stored_data = \
+            client.read('secret/{}'.format(digest))
+        assert input_data == stored_data['data']['value']
 
     if not os.path.exists(destination):
         os.makedirs(destination)
@@ -62,15 +72,20 @@ def _make_file_link(f, destination, client):
 
 
 def _restore_file_at_path(f, destination, client):
-    digest = hashlib.sha1(f).hexdigest()
+    digest = os.path.basename(f)
+    new_path = os.path.join(destination, digest)
+    if os.path.exists(new_path):
+        logging.info('Secret {} already on disk, skipping'.format(digest))
+        return
+
+    logging.info('Retrieving secret {} from vault'.format(digest))
     stored_file = client.read('secret/{}'.format(digest))
 
     if not os.path.exists(destination):
         os.makedirs(destination)
 
-    new_path = os.path.join(destination, digest)
-    with open(new_path, 'w') as target:
-        target.write(stored_file)
+    with open(new_path, 'wb') as target:
+        target.write(stored_file['data']['value'])
 
 
 def eat_files(args):
@@ -79,6 +94,8 @@ def eat_files(args):
     files_to_link = _get_links_at_path(args.source)
     files_to_lock = _get_files_at_path(args.source)
 
+    logging.info('Storing files: {}'.format(files_to_lock))
+    logging.info('Retrieving files: {}'.format(files_to_link))
     for _file in files_to_lock:
         _make_file_link(_file, args.destination, client)
 
@@ -113,8 +130,12 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.DEBUG)
+
     try:
-        args.func(args)
+        while True:
+            args.func(args)
+            time.sleep(10)
     except Exception as e:
         raise SystemExit(
             '{prog}: {msg}'.format(
