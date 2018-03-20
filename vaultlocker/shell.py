@@ -19,6 +19,9 @@ import socket
 import time
 
 
+logger = logging.getLogger(__name__)
+
+
 def _vault_client(vault, token):
     """Helper wrapper to create Vault Client"""
     return hvac.Client(url=vault, token=token)
@@ -54,7 +57,7 @@ def _make_file_link(f, destination, client):
     hasher = hashlib.sha256()
     hasher.update(f)
     digest = hasher.hexdigest()
-    logging.info('Storing secret {} in vault'.format(digest))
+    logger.info('Storing secret {} in vault'.format(digest))
     with open(f, 'rb') as input_file:
         input_data = input_file.read()
         client.write('secret/{}'.format(socket.gethostname()),
@@ -75,10 +78,10 @@ def _restore_file_at_path(f, destination, client):
     digest = os.path.basename(f)
     new_path = os.path.join(destination, digest)
     if os.path.exists(new_path):
-        logging.info('Secret {} already on disk, skipping'.format(digest))
+        logger.info('Secret {} already on disk, skipping'.format(digest))
         return
 
-    logging.info('Retrieving secret {} from vault'.format(digest))
+    logger.info('Retrieving secret {} from vault'.format(digest))
     stored_file = client.read('secret/{}'.format(socket.gethostname()))
 
     if not os.path.exists(destination):
@@ -95,8 +98,8 @@ def _eat_files(args):
     files_to_link = _get_links_at_path(args.source)
     files_to_lock = _get_files_at_path(args.source)
 
-    logging.info('Storing files: {}'.format(files_to_lock))
-    logging.info('Retrieving files: {}'.format(files_to_link))
+    logger.info('Storing files: {}'.format(files_to_lock))
+    logger.info('Retrieving files: {}'.format(files_to_link))
     for _file in files_to_lock:
         _make_file_link(_file, args.destination, client)
 
