@@ -103,7 +103,7 @@ def eat_files(args):
         _restore_file_at_path(_file, args.destination, client)
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser('vaultlocker')
     parser.set_defaults(prog=parser.prog)
     parser.add_argument(
