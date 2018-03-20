@@ -85,10 +85,11 @@ def _restore_file_at_path(f, destination, client):
         os.makedirs(destination)
 
     with open(new_path, 'wb') as target:
+        # TODO(jamespage): Needs permissions restriction!
         target.write(stored_file['data'][digest])
 
 
-def eat_files(args):
+def _eat_files(args):
     client = _vault_client(args.vault, args.token)
 
     files_to_link = _get_links_at_path(args.source)
@@ -126,7 +127,7 @@ def main():
         metavar='TOKEN',
         help="Vault authentication token",
     )
-    parser.set_defaults(func=eat_files)
+    parser.set_defaults(func=_eat_files)
 
     args = parser.parse_args()
 
