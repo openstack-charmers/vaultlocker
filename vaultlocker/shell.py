@@ -88,7 +88,7 @@ def _restore_file_at_path(f, destination, client):
         os.makedirs(destination)
 
     with open(new_path, 'wb') as target:
-        # TODO(jamespage): Needs permissions restriction!
+        os.fchmod(target.fileno(), 0o600)
         target.write(stored_file['data'][digest])
 
 
