@@ -16,7 +16,7 @@ import hvac
 import logging
 import os
 import socket
-import time
+import shutil
 
 
 logger = logging.getLogger(__name__)
@@ -32,8 +32,12 @@ def _vault_client(vault, approle):
 
 
 def _store_file_in_vault(source, client):
+    if not os.path.exists(source):
+        raise ValueError('Unable to locate source file {}'.format(source))
+
     source_uuid = str(uuid.uuid4())
     logger.info('Storing secret {} in vault'.format(source_uuid))
+
     with open(source, 'rb') as input_file:
         input_data = input_file.read()
         client.write('secret/{}/{}'.format(socket.gethostname(),
@@ -50,7 +54,7 @@ def _store_file_in_vault(source, client):
         os.makedirs(RUN_VAULTLOCKER)
 
     new_path = os.path.join(RUN_VAULTLOCKER, source_uuid)
-    os.rename(source, new_path)
+    shutil.move(source, new_path)
     os.symlink(new_path, source)
 
 
@@ -90,17 +94,6 @@ def retrieve(args):
 def main():
     parser = argparse.ArgumentParser('vaultlocker')
     parser.set_defaults(prog=parser.prog)
-    parser.add_argument(
-        "--vault-url",
-        metavar='VAULT_URL',
-        help="Vault server URL",
-    )
-    parser.add_argument(
-        "--approle",
-        metavar='approle',
-        help="Vault Application Role",
-    )
-
     subparsers = parser.add_subparsers(
         title="subcommands",
         description="valid subcommands",
@@ -108,19 +101,11 @@ def main():
     )
 
     store_parser = subparsers.add_parser('store', help='Store new file in vault')
-    store_parser.add_argument(
-        "--source",
-        metavar='source',
-        help="File to store and manage using Vault",
-    )
+    store_parser.add_argument('source', nargs='?')
     store_parser.set_defaults(func=store)
 
-    retrieve_parser = subparsers.add_parser('retrieve', help='Retrieve file from vault')
-    retrieve_parser.add_argument(
-        "--target-uuid",
-        metavar='target_uuid',
-        help="UUID of file to retrieve from Vault",
-    )
+    retrieve_parser = subparsers.add_parser('retrieve', help='Retrieve file by UUID from vault')
+    retrieve_parser.add_argument('target_uuid', nargs='?')
     retrieve_parser.set_defaults(func=retrieve)
 
     args = parser.parse_args()
