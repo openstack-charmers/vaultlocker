@@ -11,7 +11,6 @@
 # under the License.
 
 import argparse
-import configparser
 import uuid
 import hvac
 import logging
@@ -19,6 +18,7 @@ import os
 import socket
 import shutil
 
+from six import configparser
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,8 @@ CONF_FILE = '/etc/vaultlocker/vaultlocker.conf'
 
 def _vault_client(config):
     """Helper wrapper to create Vault Client"""
-    client = hvac.Client(url=config['vault']['url'])
-    client.auth_approle(config['vault']['approle'])
+    client = hvac.Client(url=config.get('vault', 'url'))
+    client.auth_approle(config.get('vault', 'approle'))
     return client
 
 
@@ -40,7 +40,7 @@ def _store_file_in_vault(source, client, config):
     source_uuid = str(uuid.uuid4())
     logger.info('Storing secret {} in vault'.format(source_uuid))
 
-    vault_path = '{}/{}/{}'.format(config['vault']['backend'],
+    vault_path = '{}/{}/{}'.format(config.get('vault', 'backend'),
                                    socket.gethostname(),
                                    source_uuid)
 
@@ -68,7 +68,7 @@ def _retrieve_file_from_vault(target_uuid, client, config):
         logger.info('Secret {} already on disk, skipping'.format(target_uuid))
         return
 
-    vault_path = '{}/{}/{}'.format(config['vault']['backend'],
+    vault_path = '{}/{}/{}'.format(config.get('vault', 'backend'),
                                    socket.gethostname(),
                                    target_uuid)
 
