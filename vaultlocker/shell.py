@@ -39,12 +39,12 @@ def _store_file_in_vault(source, client):
         client.write('secret/{}/{}'.format(socket.gethostname(),
                                            source_uuid),
                      content=input_data,
-                     path=source)
+                     source_path=source)
         stored_data = \
             client.read('secret/{}/{}'.format(socket.gethostname(),
                                               source_uuid))
         assert input_data == stored_data['data']['content']
-        assert source == stored_data['data']['path']
+        assert source == stored_data['data']['source_path']
 
     if not os.path.exists(RUN_VAULTLOCKER):
         os.makedirs(RUN_VAULTLOCKER)
@@ -71,7 +71,7 @@ def _retrieve_file_from_vault(target_uuid, client):
         os.fchmod(target.fileno(), 0o400)
         target.write(stored_file['data']['content'])
 
-    original_source = stored_file['data']['path']
+    original_source = stored_file['data']['source_path']
     if os.path.exists(original_source):
         os.remove(original_source)
     os.symlink(new_path, original_source)
