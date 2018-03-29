@@ -7,7 +7,7 @@ Wants=network-online.target local-fs.target
 Type=oneshot
 KillMode=none
 Environment=VAULTLOCKER_TIMEOUT=10000
-ExecStart=/bin/sh -c 'timeout $VAULTLOCKER_TIMEOUT vaultlocker retrieve %i'
+ExecStart=/bin/sh -c 'vaultlocker --retry $VAULTLOCKER_TIMEOUT retrieve %i'
 TimeoutSec=0
 
 [Install]
