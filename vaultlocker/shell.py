@@ -11,7 +11,7 @@
 # under the License.
 
 import argparse
-import hashlib
+import uuid
 import hvac
 import logging
 import os
@@ -21,125 +21,114 @@ import time
 
 logger = logging.getLogger(__name__)
 
+RUN_VAULTLOCKER = '/run/vaultlocker'
 
-def _vault_client(vault, token):
+
+def _vault_client(vault, approle):
     """Helper wrapper to create Vault Client"""
-    return hvac.Client(url=vault, token=token)
+    client = hvac.Client(url=vault)
+    client.auth_approle(approle)
+    return client
 
 
-def _get_links_at_path(path):
-    """Retrieve list of symbolic links from directory path"""
-    files = []
-    if os.path.exists(path) and os.path.isdir(path):
-        for dirpath, _, filenames in os.walk(path):
-            for _file in filenames:
-                _path = os.path.join(dirpath, _file)
-                if os.path.islink(_path):
-                    target = os.path.realpath(_path)
-                    if not os.path.isdir(target):
-                        files.append(target)
-    return files
-
-
-def _get_files_at_path(path):
-    """Retrieve list of files from directory path"""
-    files = []
-    if os.path.exists(path) and os.path.isdir(path):
-        for dirpath, _, filenames in os.walk(path):
-            for _file in filenames:
-                _path = os.path.join(dirpath, _file)
-                if not os.path.islink(_path):
-                    files.append(_path)
-    return files
-
-
-def _make_file_link(f, destination, client):
-    hasher = hashlib.sha256()
-    hasher.update(f)
-    digest = hasher.hexdigest()
-    logger.info('Storing secret {} in vault'.format(digest))
-    with open(f, 'rb') as input_file:
+def _store_file_in_vault(source, client):
+    source_uuid = str(uuid.uuid4())
+    logger.info('Storing secret {} in vault'.format(source_uuid))
+    with open(source, 'rb') as input_file:
         input_data = input_file.read()
-        client.write('secret/{}'.format(socket.gethostname()),
-                     **{digest: input_data})
+        client.write('secret/{}/{}'.format(socket.gethostname(),
+                                           source_uuid),
+                     content=input_data,
+                     path=source)
         stored_data = \
-            client.read('secret/{}'.format(socket.gethostname()))
-        assert input_data == stored_data['data'][digest]
+            client.read('secret/{}/{}'.format(socket.gethostname(),
+                                              source_uuid))
+        assert input_data == stored_data['data']['content']
+        assert source == stored_data['data']['path']
 
-    if not os.path.exists(destination):
-        os.makedirs(destination)
+    if not os.path.exists(RUN_VAULTLOCKER):
+        os.makedirs(RUN_VAULTLOCKER)
 
-    new_path = os.path.join(destination, digest)
-    os.rename(f, new_path)
-    os.symlink(new_path, f)
+    new_path = os.path.join(RUN_VAULTLOCKER, source_uuid)
+    os.rename(source, new_path)
+    os.symlink(new_path, source)
 
 
-def _restore_file_at_path(f, destination, client):
-    digest = os.path.basename(f)
-    new_path = os.path.join(destination, digest)
+def _retrieve_file_from_vault(target_uuid, client):
+    new_path = os.path.join(RUN_VAULTLOCKER, target_uuid)
     if os.path.exists(new_path):
-        logger.info('Secret {} already on disk, skipping'.format(digest))
+        logger.info('Secret {} already on disk, skipping'.format(target_uuid))
         return
 
-    logger.info('Retrieving secret {} from vault'.format(digest))
-    stored_file = client.read('secret/{}'.format(socket.gethostname()))
+    logger.info('Retrieving secret {} from vault'.format(target_uuid))
+    stored_file = client.read('secret/{}/{}'.format(socket.gethostname(),
+                                                    target_uuid))
 
-    if not os.path.exists(destination):
-        os.makedirs(destination)
+    if not os.path.exists(RUN_VAULTLOCKER):
+        os.makedirs(RUN_VAULTLOCKER)
 
     with open(new_path, 'wb') as target:
-        os.fchmod(target.fileno(), 0o600)
-        target.write(stored_file['data'][digest])
+        os.fchmod(target.fileno(), 0o400)
+        target.write(stored_file['data']['content'])
+
+    original_source = stored_file['data']['path']
+    if os.path.exists(original_source):
+        os.remove(original_source)
+    os.symlink(new_path, original_source)
 
 
-def _eat_files(args):
-    client = _vault_client(args.vault, args.token)
+def store(args):
+    client = _vault_client(args.vault, args.approle)
+    _store_file_in_vault(args.source, client)
 
-    files_to_link = _get_links_at_path(args.source)
-    files_to_lock = _get_files_at_path(args.source)
 
-    logger.info('Storing files: {}'.format(files_to_lock))
-    logger.info('Retrieving files: {}'.format(files_to_link))
-    for _file in files_to_lock:
-        _make_file_link(_file, args.destination, client)
-
-    for _file in files_to_link:
-        _restore_file_at_path(_file, args.destination, client)
+def retrieve(args):
+    client = _vault_client(args.vault, args.approle)
+    _retrieve_file_from_vault(args.target_uuid, client)
 
 
 def main():
     parser = argparse.ArgumentParser('vaultlocker')
     parser.set_defaults(prog=parser.prog)
     parser.add_argument(
-        "--source",
-        metavar='SOURCE',
-        help="Source directory to move files from",
-    )
-    parser.add_argument(
-        "--destination",
-        metavar='DESTINATION',
-        help="TMPFS to place files on",
-    )
-    parser.add_argument(
-        "--vault",
-        metavar='VAULT',
+        "--vault-url",
+        metavar='VAULT_URL',
         help="Vault server URL",
     )
     parser.add_argument(
-        "--token",
-        metavar='TOKEN',
-        help="Vault authentication token",
+        "--approle",
+        metavar='approle',
+        help="Vault Application Role",
     )
-    parser.set_defaults(func=_eat_files)
+
+    subparsers = parser.add_subparsers(
+        title="subcommands",
+        description="valid subcommands",
+        help="sub-command help",
+    )
+
+    store_parser = subparsers.add_parser('store', help='Store new file in vault')
+    store_parser.add_argument(
+        "--source",
+        metavar='source',
+        help="File to store and manage using Vault",
+    )
+    store_parser.set_defaults(func=store)
+
+    retrieve_parser = subparsers.add_parser('retrieve', help='Retrieve file from vault')
+    parser.add_argument(
+        "--target-uuid",
+        metavar='target_uuid',
+        help="UUID of file to retrieve from Vault",
+    )
+    retrieve_parser.set_defaults(func=retrieve)
 
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG)
 
     try:
-        while True:
-            args.func(args)
-            time.sleep(10)
+        args.func(args)
     except Exception as e:
         raise SystemExit(
             '{prog}: {msg}'.format(
