@@ -115,11 +115,13 @@ def main():
     )
 
     store_parser = subparsers.add_parser('store', help='Store new file in vault')
-    store_parser.add_argument('source', nargs='?')
+    store_parser.add_argument('source',
+                              metavar='SOURCE', nargs=1)
     store_parser.set_defaults(func=store)
 
     retrieve_parser = subparsers.add_parser('retrieve', help='Retrieve file by UUID from vault')
-    retrieve_parser.add_argument('target_uuid', nargs='?')
+    retrieve_parser.add_argument('target_uuid',
+                                 metavar='TARGET_UUID', nargs=1)
     retrieve_parser.set_defaults(func=retrieve)
 
     args = parser.parse_args()
