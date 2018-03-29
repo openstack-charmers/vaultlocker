@@ -116,7 +116,7 @@ def main():
     store_parser.set_defaults(func=store)
 
     retrieve_parser = subparsers.add_parser('retrieve', help='Retrieve file from vault')
-    parser.add_argument(
+    retrieve_parser.add_argument(
         "--target-uuid",
         metavar='target_uuid',
         help="UUID of file to retrieve from Vault",
