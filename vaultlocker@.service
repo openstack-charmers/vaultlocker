@@ -1,0 +1,13 @@
+[Unit]
+Description=vaultlocker retrieve: %i
+After=network-online.target local-fs.target
+Wants=network-online.target local-fs.target
+
+[Service]
+Type=oneshot
+KillMode=none
+ExecStart=/usr/local/bin/vaultlocker retrieve $i
+TimeoutSec=0
+
+[Install]
+WantedBy=multi-user.target

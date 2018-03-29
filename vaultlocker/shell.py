@@ -90,12 +90,12 @@ def _retrieve_file_from_vault(target_uuid, client, config):
 
 def store(args, config):
     client = _vault_client(config)
-    _store_file_in_vault(args.source, client, config)
+    _store_file_in_vault(args.source[0], client, config)
 
 
 def retrieve(args, config):
     client = _vault_client(config)
-    _retrieve_file_from_vault(args.target_uuid, client, config)
+    _retrieve_file_from_vault(args.target_uuid[0], client, config)
 
 
 def get_config():
