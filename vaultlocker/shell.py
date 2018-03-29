@@ -18,7 +18,7 @@ import os
 import socket
 import shutil
 
-from six import configparser
+from six.moves import configparser
 
 logger = logging.getLogger(__name__)
 
