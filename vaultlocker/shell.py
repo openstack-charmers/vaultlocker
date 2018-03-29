@@ -11,6 +11,7 @@
 # under the License.
 
 import argparse
+import configparser
 import uuid
 import hvac
 import logging
@@ -22,31 +23,34 @@ import shutil
 logger = logging.getLogger(__name__)
 
 RUN_VAULTLOCKER = '/run/vaultlocker'
+CONF_FILE = '/etc/vaultlocker/vaultlocker.conf'
 
 
-def _vault_client(vault, approle):
+def _vault_client(config):
     """Helper wrapper to create Vault Client"""
-    client = hvac.Client(url=vault)
-    client.auth_approle(approle)
+    client = hvac.Client(url=config['vault']['url'])
+    client.auth_approle(config['vault']['approle'])
     return client
 
 
-def _store_file_in_vault(source, client):
+def _store_file_in_vault(source, client, config):
     if not os.path.exists(source):
         raise ValueError('Unable to locate source file {}'.format(source))
 
     source_uuid = str(uuid.uuid4())
     logger.info('Storing secret {} in vault'.format(source_uuid))
 
+    vault_path = '{}/{}/{}'.format(config['vault']['backend'],
+                                   socket.gethostname(),
+                                   source_uuid)
+
     with open(source, 'rb') as input_file:
         input_data = input_file.read()
-        client.write('secret/{}/{}'.format(socket.gethostname(),
-                                           source_uuid),
+        client.write(vault_path,
                      content=input_data,
                      source_path=source)
         stored_data = \
-            client.read('secret/{}/{}'.format(socket.gethostname(),
-                                              source_uuid))
+            client.read(vault_path)
         assert input_data == stored_data['data']['content']
         assert source == stored_data['data']['source_path']
 
@@ -58,15 +62,18 @@ def _store_file_in_vault(source, client):
     os.symlink(new_path, source)
 
 
-def _retrieve_file_from_vault(target_uuid, client):
+def _retrieve_file_from_vault(target_uuid, client, config):
     new_path = os.path.join(RUN_VAULTLOCKER, target_uuid)
     if os.path.exists(new_path):
         logger.info('Secret {} already on disk, skipping'.format(target_uuid))
         return
 
+    vault_path = '{}/{}/{}'.format(config['vault']['backend'],
+                                   socket.gethostname(),
+                                   target_uuid)
+
     logger.info('Retrieving secret {} from vault'.format(target_uuid))
-    stored_file = client.read('secret/{}/{}'.format(socket.gethostname(),
-                                                    target_uuid))
+    stored_file = client.read(vault_path)
 
     if not os.path.exists(RUN_VAULTLOCKER):
         os.makedirs(RUN_VAULTLOCKER)
@@ -81,14 +88,21 @@ def _retrieve_file_from_vault(target_uuid, client):
     os.symlink(new_path, original_source)
 
 
-def store(args):
-    client = _vault_client(args.vault_url, args.approle)
-    _store_file_in_vault(args.source, client)
+def store(args, config):
+    client = _vault_client(config)
+    _store_file_in_vault(args.source, client, config)
 
 
-def retrieve(args):
-    client = _vault_client(args.vault_url, args.approle)
-    _retrieve_file_from_vault(args.target_uuid, client)
+def retrieve(args, config):
+    client = _vault_client(config)
+    _retrieve_file_from_vault(args.target_uuid, client, config)
+
+
+def get_config():
+    config = configparser.ConfigParser()
+    if os.path.exists(CONF_FILE):
+        config.read(CONF_FILE)
+    return config
 
 
 def main():
@@ -113,7 +127,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
 
     try:
-        args.func(args)
+        args.func(args, get_config())
     except Exception as e:
         raise SystemExit(
             '{prog}: {msg}'.format(
