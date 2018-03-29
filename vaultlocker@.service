@@ -6,7 +6,8 @@ Wants=network-online.target local-fs.target
 [Service]
 Type=oneshot
 KillMode=none
-ExecStart=/usr/local/bin/vaultlocker retrieve $i
+Environment=VAULTLOCKER_TIMEOUT=10000
+ExecStart=/bin/sh -c 'timeout $VAULTLOCKER_TIMEOUT vaultlocker retrieve %i'
 TimeoutSec=0
 
 [Install]
