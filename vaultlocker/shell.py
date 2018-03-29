@@ -78,12 +78,12 @@ def _retrieve_file_from_vault(target_uuid, client):
 
 
 def store(args):
-    client = _vault_client(args.vault, args.approle)
+    client = _vault_client(args.vault_url, args.approle)
     _store_file_in_vault(args.source, client)
 
 
 def retrieve(args):
-    client = _vault_client(args.vault, args.approle)
+    client = _vault_client(args.vault_url, args.approle)
     _retrieve_file_from_vault(args.target_uuid, client)
 
 
