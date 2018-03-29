@@ -17,6 +17,7 @@ import logging
 import os
 import socket
 import shutil
+import tenacity
 
 from six.moves import configparser
 
@@ -89,13 +90,29 @@ def _retrieve_file_from_vault(target_uuid, client, config):
 
 
 def store(args, config):
-    client = _vault_client(config)
-    _store_file_in_vault(args.source[0], client, config)
+    @tenacity.retry(
+        wait=tenacity.wait_fixed(1),
+        stop=(tenacity.stop_after_delay(args.retry) if args.retry > 0
+                else tenacity.stop_after_attempt(1)),
+        retry=(tenacity.retry_if_exception(hvac.exceptions.VaultNotInitialized) |
+               tenacity.retry_if_exception(hvac.exceptions.VaultDown)))
+    def _do_it():
+        client = _vault_client(config)
+        _store_file_in_vault(args.source[0], client, config)
+    _do_it()
 
 
 def retrieve(args, config):
-    client = _vault_client(config)
-    _retrieve_file_from_vault(args.target_uuid[0], client, config)
+    @tenacity.retry(
+        wait=tenacity.wait_fixed(1),
+        stop=(tenacity.stop_after_delay(args.retry) if args.retry > 0
+                else tenacity.stop_after_attempt(1)),
+        retry=(tenacity.retry_if_exception(hvac.exceptions.VaultNotInitialized) |
+               tenacity.retry_if_exception(hvac.exceptions.VaultDown)))
+    def _do_it():
+        client = _vault_client(config)
+        _retrieve_file_from_vault(args.target_uuid[0], client, config)
+    _do_it()
 
 
 def get_config():
@@ -113,6 +130,10 @@ def main():
         description="valid subcommands",
         help="sub-command help",
     )
+    parser.add_argument('--retry',
+                        default=-1,
+                        type=int,
+                        help="Time in seconds to continue retrying to connect to Vault")
 
     store_parser = subparsers.add_parser('store', help='Store new file in vault')
     store_parser.add_argument('source',
