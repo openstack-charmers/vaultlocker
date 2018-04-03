@@ -10,10 +10,10 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-import os
-import subprocess
 import base64
 import logging
+import os
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,7 @@ KEY_SIZE = 4096
 
 
 def generate_key():
-    """
-    Generate a 4096 bit random key for use with dm-crypt
+    """Generate a 4096 bit random key for use with dm-crypt
 
     :returns: str.  Base64 encoded 4096 bit key
     """
@@ -33,7 +32,8 @@ def generate_key():
 
 
 def luks_format(key, device, uuid):
-    """
+    """LUKS format a block device
+
     Format a block devices using dm-crypt/LUKS with the
     provided key and uuid
 
@@ -51,7 +51,7 @@ def luks_format(key, device, uuid):
         'luksFormat',
         device,
     ]
-    process= subprocess.Popen(
+    process = subprocess.Popen(
         command,
         stdin=subprocess.PIPE
     )
@@ -62,9 +62,9 @@ def luks_format(key, device, uuid):
                                             ' '.join(command))
 
 
-
 def luks_open(key, uuid):
-    """
+    """LUKS open a block device by UUID
+
     Open a block device using dm-crypt/LUKS with the
     provided key and uuid
 
@@ -80,7 +80,7 @@ def luks_open(key, uuid):
         'UUID={}'.format(uuid),
         'crypt-{}'.format(uuid),
     ]
-    process= subprocess.Popen(
+    process = subprocess.Popen(
         command,
         stdin=subprocess.PIPE
     )

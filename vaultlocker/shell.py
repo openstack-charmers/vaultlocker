@@ -14,17 +14,17 @@
 from __future__ import absolute_import
 
 import argparse
-import uuid
 import hvac
 import logging
 import os
-import socket
 import shutil
+import socket
 import tenacity
+import uuid
 
 from six.moves import configparser
 
-from . import dmcrypt
+from vaultlocker import dmcrypt
 
 logger = logging.getLogger(__name__)
 
@@ -131,10 +131,15 @@ def _decrypt_block_device(args, client, config):
 def _do_it_with_persistence(func, args, config):
     @tenacity.retry(
         wait=tenacity.wait_fixed(1),
-        stop=(tenacity.stop_after_delay(args.retry) if args.retry > 0
-                else tenacity.stop_after_attempt(1)),
-        retry=(tenacity.retry_if_exception(hvac.exceptions.VaultNotInitialized) |
-               tenacity.retry_if_exception(hvac.exceptions.VaultDown)))
+        stop=(
+            tenacity.stop_after_delay(args.retry) if args.retry > 0
+            else tenacity.stop_after_attempt(1)
+            ),
+        retry=(
+            tenacity.retry_if_exception(hvac.exceptions.VaultNotInitialized) |
+            tenacity.retry_if_exception(hvac.exceptions.VaultDown)
+            )
+        )
     def _do_it():
         client = _vault_client(config)
         func(args, client, config)
@@ -172,29 +177,42 @@ def main():
         description="valid subcommands",
         help="sub-command help",
     )
-    parser.add_argument('--retry',
-                        default=-1,
-                        type=int,
-                        help="Time in seconds to continue retrying to connect to Vault")
+    parser.add_argument(
+        '--retry',
+        default=-1,
+        type=int,
+        help="Time in seconds to continue retrying to connect to Vault"
+    )
 
-    store_parser = subparsers.add_parser('store', help='Store new file in Vault')
+    store_parser = subparsers.add_parser(
+        'store',
+        help='Store new file in Vault'
+    )
     store_parser.add_argument('source',
                               metavar='SOURCE', nargs=1)
     store_parser.set_defaults(func=store)
 
-
-    retrieve_parser = subparsers.add_parser('retrieve', help='Retrieve file by UUID from Vault')
+    retrieve_parser = subparsers.add_parser(
+        'retrieve',
+        help='Retrieve file by UUID from Vault'
+    )
     retrieve_parser.add_argument('target_uuid',
                                  metavar='TARGET_UUID', nargs=1)
     retrieve_parser.set_defaults(func=retrieve)
 
-    encrypt_parser = subparsers.add_parser('encrypt', help='Encrypt a block device and store its key in Vault')
+    encrypt_parser = subparsers.add_parser(
+        'encrypt',
+        help='Encrypt a block device and store its key in Vault'
+    )
     encrypt_parser.add_argument('block_device',
                                 metavar='BLOCK_DEVICE', nargs=1,
                                 help="Full path to block device to encrypt")
     encrypt_parser.set_defaults(func=encrypt)
 
-    decrypt_parser = subparsers.add_parser('decrypt', help='Decrypt a block device retrieving its key from Vault')
+    decrypt_parser = subparsers.add_parser(
+        'decrypt',
+        help='Decrypt a block device retrieving its key from Vault'
+    )
     decrypt_parser.add_argument('uuid',
                                 metavar='uuid', nargs=1,
                                 help='UUID of block device to decrypt')
