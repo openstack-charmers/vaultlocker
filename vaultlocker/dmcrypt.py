@@ -27,7 +27,7 @@ def generate_key():
 
     :returns: str.  Base64 encoded 4096 bit key
     """
-    data = os.urandom(KEY_SIZE / 8)
+    data = os.urandom(int(KEY_SIZE / 8))
     key = base64.b64encode(data).decode('utf-8')
     return key
 
@@ -55,7 +55,7 @@ def luks_format(key, device, uuid):
         command,
         stdin=subprocess.PIPE
     )
-    process.communicate(key)
+    process.communicate(key.encode('UTF-8'))
     returncode = process.wait()
     if returncode != 0:
         raise subprocess.CalledProcessError(returncode,
@@ -84,7 +84,7 @@ def luks_open(key, uuid):
         command,
         stdin=subprocess.PIPE
     )
-    process.communicate(key)
+    process.communicate(key.encode('UTF-8'))
     returncode = process.wait()
     if returncode != 0:
         raise subprocess.CalledProcessError(returncode,
