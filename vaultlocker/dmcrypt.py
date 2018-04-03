@@ -31,28 +31,6 @@ def generate_key():
     return key
 
 
-def _run_command(command, command_input):
-    """Run a command and pipe data to it
-
-    Runs the command as provided, writing the provided input
-    to it.
-
-    :param: command: subprocess compatible array to execute
-    :param: command_input: string to write to command stdin
-    :raises: CalledProcessError: in the event of a non-zero exit code.
-    """
-    logger.debug('Running command: {}'.format(' '.join(command)))
-    process = subprocess.Popen(
-        command,
-        stdin=subprocess.PIPE
-    )
-    _, stderr = process.communicate(command_input.encode('UTF-8'))
-    returncode = process.wait()
-    if returncode != 0:
-        raise subprocess.CalledProcessError(returncode,
-                                            ' '.join(command),
-                                            stderr)
-
 def luks_format(key, device, uuid):
     """LUKS format a block device
 
@@ -74,7 +52,8 @@ def luks_format(key, device, uuid):
         'luksFormat',
         device,
     ]
-    _run_command(command, key)
+    subprocess.check_output(command,
+                            input=key.encode('UTF-8'))
 
 
 def luks_open(key, uuid):
@@ -98,5 +77,6 @@ def luks_open(key, uuid):
         'UUID={}'.format(uuid),
         handle,
     ]
-    _run_command(command, key)
+    subprocess.check_output(command,
+                            input=key.encode('UTF-8'))
     return handle
