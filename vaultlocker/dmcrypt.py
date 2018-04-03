@@ -34,7 +34,7 @@ def generate_key():
 def luks_format(key, device, uuid):
     """LUKS format a block device
 
-    Format a block devices using dm-crypt/LUKS with the
+    Format a block device using dm-crypt/LUKS with the
     provided key and uuid
 
     :param: key: string containing the encryption key to use.
