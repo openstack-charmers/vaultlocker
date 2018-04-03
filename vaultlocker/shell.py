@@ -10,6 +10,9 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+
+from __future__ import absolute_import
+
 import argparse
 import uuid
 import hvac
@@ -20,6 +23,8 @@ import shutil
 import tenacity
 
 from six.moves import configparser
+
+from . import dmcrypt
 
 logger = logging.getLogger(__name__)
 
@@ -34,16 +39,21 @@ def _vault_client(config):
     return client
 
 
-def _store_file_in_vault(source, client, config):
+def _get_vault_path(device_uuid, config):
+    return '{}/{}/{}'.format(config.get('vault', 'backend'),
+                             socket.gethostname(),
+                             device_uuid)
+
+
+def _store_file_in_vault(args, client, config):
+    source = args.source[0]
     if not os.path.exists(source):
         raise ValueError('Unable to locate source file {}'.format(source))
 
     source_uuid = str(uuid.uuid4())
     logger.info('Storing secret {} in vault'.format(source_uuid))
 
-    vault_path = '{}/{}/{}'.format(config.get('vault', 'backend'),
-                                   socket.gethostname(),
-                                   source_uuid)
+    vault_path = _get_vault_path(source_uuid, config)
 
     with open(source, 'rb') as input_file:
         input_data = input_file.read()
@@ -64,15 +74,14 @@ def _store_file_in_vault(source, client, config):
     print(source_uuid)
 
 
-def _retrieve_file_from_vault(target_uuid, client, config):
+def _retrieve_file_from_vault(args, client, config):
+    target_uuid = args[0]
     new_path = os.path.join(RUN_VAULTLOCKER, target_uuid)
     if os.path.exists(new_path):
         logger.info('Secret {} already on disk, skipping'.format(target_uuid))
         return
 
-    vault_path = '{}/{}/{}'.format(config.get('vault', 'backend'),
-                                   socket.gethostname(),
-                                   target_uuid)
+    vault_path = _get_vault_path(target_uuid, config)
 
     logger.info('Retrieving secret {} from vault'.format(target_uuid))
     stored_file = client.read(vault_path)
@@ -90,7 +99,36 @@ def _retrieve_file_from_vault(target_uuid, client, config):
     os.symlink(new_path, original_source)
 
 
-def store(args, config):
+def _encrypt_block_device(args, client, config):
+    block_device = args.block_device[0]
+    key = dmcrypt.generate_key()
+    block_uuid = str(uuid.uuid4())
+    vault_path = _get_vault_path(block_uuid, config)
+
+    dmcrypt.luks_format(key, block_device, block_uuid)
+
+    # NOTE: store and validate key
+    client.write(vault_path,
+                 key=key)
+    stored_data = client.read(vault_path)
+    assert key == stored_data['data']['key']
+
+    dmcrypt.luks_open(key, block_uuid)
+
+
+def _decrypt_block_device(args, client, config):
+    block_uuid = args.uuid[0]
+    vault_path = _get_vault_path(block_uuid, config)
+
+    stored_data = client.read(vault_path)
+    if stored_data is None:
+        raise ValueError('Unable to locate key for {}'.format(block_uuid))
+    key = stored_data['data']['key']
+
+    dmcrypt.luks_open(key, block_uuid)
+
+
+def _do_it_with_persistence(func, args, config):
     @tenacity.retry(
         wait=tenacity.wait_fixed(1),
         stop=(tenacity.stop_after_delay(args.retry) if args.retry > 0
@@ -99,21 +137,24 @@ def store(args, config):
                tenacity.retry_if_exception(hvac.exceptions.VaultDown)))
     def _do_it():
         client = _vault_client(config)
-        _store_file_in_vault(args.source[0], client, config)
+        func(args, client, config)
     _do_it()
+
+
+def store(args, config):
+    _do_it_with_persistence(_store_file_in_vault, args, config)
 
 
 def retrieve(args, config):
-    @tenacity.retry(
-        wait=tenacity.wait_fixed(1),
-        stop=(tenacity.stop_after_delay(args.retry) if args.retry > 0
-                else tenacity.stop_after_attempt(1)),
-        retry=(tenacity.retry_if_exception(hvac.exceptions.VaultNotInitialized) |
-               tenacity.retry_if_exception(hvac.exceptions.VaultDown)))
-    def _do_it():
-        client = _vault_client(config)
-        _retrieve_file_from_vault(args.target_uuid[0], client, config)
-    _do_it()
+    _do_it_with_persistence(_retrieve_file_from_vault, args, config)
+
+
+def encrypt(args, config):
+    _do_it_with_persistence(_encrypt_block_device, args, config)
+
+
+def decrypt(args, config):
+    _do_it_with_persistence(_decrypt_block_device, args, config)
 
 
 def get_config():
@@ -136,15 +177,28 @@ def main():
                         type=int,
                         help="Time in seconds to continue retrying to connect to Vault")
 
-    store_parser = subparsers.add_parser('store', help='Store new file in vault')
+    store_parser = subparsers.add_parser('store', help='Store new file in Vault')
     store_parser.add_argument('source',
                               metavar='SOURCE', nargs=1)
     store_parser.set_defaults(func=store)
 
-    retrieve_parser = subparsers.add_parser('retrieve', help='Retrieve file by UUID from vault')
+
+    retrieve_parser = subparsers.add_parser('retrieve', help='Retrieve file by UUID from Vault')
     retrieve_parser.add_argument('target_uuid',
                                  metavar='TARGET_UUID', nargs=1)
     retrieve_parser.set_defaults(func=retrieve)
+
+    encrypt_parser = subparsers.add_parser('encrypt', help='Encrypt a block device and store its key in Vault')
+    encrypt_parser.add_argument('block_device',
+                                metavar='BLOCK_DEVICE', nargs=1,
+                                help="Full path to block device to encrypt")
+    encrypt_parser.set_defaults(func=encrypt)
+
+    decrypt_parser = subparsers.add_parser('decrypt', help='Decrypt a block device retrieving its key from Vault')
+    decrypt_parser.add_argument('uuid',
+                                metavar='uuid', nargs=1,
+                                help='UUID of block device to decrypt')
+    decrypt_parser.set_defaults(func=decrypt)
 
     args = parser.parse_args()
 
