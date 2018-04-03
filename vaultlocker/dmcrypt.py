@@ -41,7 +41,7 @@ def luks_format(key, device, uuid):
     :param: device: full path to block device to use.
     :param: uuid: uuid to use for encrypted block device.
     """
-    logger.info('LUKS formatting {}/{}'.format(device, uuid))
+    logger.info('LUKS formatting {} using UUID:{}'.format(device, uuid))
     command = [
         'cryptsetup',
         '--batch-mode',
@@ -73,9 +73,11 @@ def luks_open(key, uuid):
         '--batch-mode',
         '--key-file',
         '-',
-        'luksOpen',
+        'open',
         'UUID={}'.format(uuid),
         handle,
+        '--type',
+        'luks',
     ]
     subprocess.check_output(command,
                             input=key.encode('UTF-8'))
