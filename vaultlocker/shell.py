@@ -61,6 +61,7 @@ def _store_file_in_vault(source, client, config):
     new_path = os.path.join(RUN_VAULTLOCKER, source_uuid)
     shutil.move(source, new_path)
     os.symlink(new_path, source)
+    print(source_uuid)
 
 
 def _retrieve_file_from_vault(target_uuid, client, config):
