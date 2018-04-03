@@ -109,9 +109,9 @@ def _encrypt_block_device(args, client, config):
 
     # NOTE: store and validate key
     client.write(vault_path,
-                 key=key)
+                 dmcrypt_key=key)
     stored_data = client.read(vault_path)
-    assert key == stored_data['data']['key']
+    assert key == stored_data['data']['dmcrypt_key']
 
     dmcrypt.luks_open(key, block_uuid)
 
@@ -123,7 +123,7 @@ def _decrypt_block_device(args, client, config):
     stored_data = client.read(vault_path)
     if stored_data is None:
         raise ValueError('Unable to locate key for {}'.format(block_uuid))
-    key = stored_data['data']['key']
+    key = stored_data['data']['dmcrypt_key']
 
     dmcrypt.luks_open(key, block_uuid)
 
