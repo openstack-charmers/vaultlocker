@@ -15,6 +15,7 @@ import hvac
 import logging
 import os
 import socket
+import subprocess
 import tenacity
 import uuid
 
@@ -56,6 +57,12 @@ def _encrypt_block_device(args, client, config):
     assert key == stored_data['data']['dmcrypt_key']
 
     dmcrypt.luks_open(key, block_uuid)
+
+    logging.info('Enabling vaultlocker '
+                 'systemd unit for {}'.format(block_uuid))
+    cmd = ['systemctl', 'enable',
+           'vaultlocker-decrypt@{}.service'.format(block_uuid)]
+    subprocess.check_call(cmd)
 
 
 def _decrypt_block_device(args, client, config):
