@@ -17,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def enable(service_name):
-    """
-    Enable a systemd unit
+    """Enable a systemd unit
 
     :param: service_name: Name of the service to enable.
     """

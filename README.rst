@@ -2,16 +2,16 @@
 vaultlocker
 ===========
 
-Utility to store and retrieve secrets in Hashicorp Vault.
+Utility to store and retrieve dm-crypt keys in Hashicorp Vault.
 
 Vault provides a nice way to manage secrets within complex software
 deployments.
 
-vaultlocker provides a way to store and retrieve files in Vault,
-automatically retrieving files on boot required for the operation
-of a system.  These might include encryption key files for dm-crypt.
+vaultlocker provides a way to store and retrieve dm-crypt encryption
+keys in Vault, automatically retrieving keys and opening LUKS dm-crypt
+devices on boot.
 
-vaultlocker is configured using `/etc/vaultloker/vaultlocker.conf`::
+vaultlocker is configured using `/etc/vaultlocker/vaultlocker.conf`::
 
     [vault]
     url = https://vault.internal:8200
@@ -20,21 +20,23 @@ vaultlocker is configured using `/etc/vaultloker/vaultlocker.conf`::
 
 vaultlocker defaults to using a backend with the name `secret`.
 
-A file can be stored in vaultlocker::
+A block device can be encrypted and its key stored in vault::
 
-    sudo vaultlocker store /etc/dm-crypt/sdb.key
+    sudo vaultlocker encrypt /dev/sdd1
 
 This will automatically create a new systemd unit which will
-retrieve the file on reboot for system operation.
+automatically retrieve the key and open the LUKS/dm-crypt device
+on boot.
 
-A file can also be retrieved from the command line::
+Unless a UUID is provided (using the optional --uuid flag)
+vaultlocker will generate a UUID to label and identify the block
+device during subsequent operations.
 
-    sudo vaultlocker retrieve f65b9e66-8f0c-4cae-b6f5-6ec85ea134f2
+A block device can also be opened from the command line using its
+UUID (hint - the block device or partition will be labelled with the
+UUID)::
 
-File are written to /run/vaultlocker (typically a tmpfs mount)
-and symlinks are created from the original file location::
-
-    /etc/dm-crypt/sdb.key -> /run/vaultlocker/f65b9e66-8f0c-4cae-b6f5-6ec85ea134f2
+    sudo vaultlocker decrypt f65b9e66-8f0c-4cae-b6f5-6ec85ea134f2
 
 Authentication to Vault is done using an AppRole without a secret_id; its assumed
 that a CIDR based ACL is in use to allow permitted systems within the Data Center
@@ -44,13 +46,3 @@ to login and retrieve secrets from Vault.
 * Documentation: https://docs.openstack.org/vaultlocker/latest
 * Source: https://git.openstack.org/cgit/openstack/vaultlocker
 * Bugs: https://bugs.launchpad.net/vaultlocker
-
-Features
---------
-
-TODO
-----
-
-* Execution of provided command post retrieve
-* Skip retrieval to filesystem - pipe directly to retrieve
-  post-command.
