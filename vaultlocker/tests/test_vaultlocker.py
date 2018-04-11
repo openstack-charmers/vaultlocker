@@ -24,5 +24,8 @@ from vaultlocker.tests import base
 
 class TestVaultlocker(base.TestCase):
 
-    def test_something(self):
+    def test_encrypt(self):
+        pass
+
+    def test_decrypt(self):
         pass
