@@ -2,6 +2,9 @@
 vaultlocker
 ===========
 
+.. image:: https://travis-ci.org/openstack-charmers/vaultlocker.svg?branch=master
+    :target: https://travis-ci.org/openstack-charmers/vaultlocker
+
 Utility to store and retrieve dm-crypt keys in Hashicorp Vault.
 
 Vault provides a nice way to manage secrets within complex software
