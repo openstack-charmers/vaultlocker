@@ -23,7 +23,7 @@ import base64
 import mock
 
 from vaultlocker import dmcrypt
-from vaultlocker.tests import base
+from vaultlocker.tests.unit import base
 
 
 class TestDMCrypt(base.TestCase):

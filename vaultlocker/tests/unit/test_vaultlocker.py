@@ -22,7 +22,7 @@ Tests for `vaultlocker` module.
 import mock
 
 from vaultlocker import shell
-from vaultlocker.tests import base
+from vaultlocker.tests.unit import base
 
 
 class TestVaultlocker(base.TestCase):

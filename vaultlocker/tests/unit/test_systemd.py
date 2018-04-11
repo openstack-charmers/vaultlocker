@@ -22,7 +22,7 @@ Tests for `systemd` module.
 import mock
 
 from vaultlocker import systemd
-from vaultlocker.tests import base
+from vaultlocker.tests.unit import base
 
 
 class TestSystemD(base.TestCase):
