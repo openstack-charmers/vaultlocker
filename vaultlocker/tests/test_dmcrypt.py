@@ -31,31 +31,31 @@ class TestDMCrypt(base.TestCase):
     @mock.patch.object(dmcrypt, 'subprocess')
     def test_luks_format(self, _subprocess):
         dmcrypt.luks_format('mykey', '/dev/sdb', 'test-uuid')
-        _subprocess.check_output.assert_called_with(
+        _subprocess.check_output.assert_called_once_with(
             ['cryptsetup',
              '--batch-mode',
              '--uuid', 'test-uuid',
              '--key-file', '-',
              'luksFormat', '/dev/sdb'],
-            input='mykey'
+            input='mykey'.encode('UTF-8')
         )
 
     @mock.patch.object(dmcrypt, 'subprocess')
     def test_luks_open(self, _subprocess):
         dmcrypt.luks_open('mykey', 'test-uuid')
-        _subprocess.check_output.assert_called_with(
+        _subprocess.check_output.assert_called_once_with(
             ['cryptsetup',
              '--batch-mode',
              '--key-file', '-',
              'open', 'UUID=test-uuid', 'crypt-test-uuid',
              '--type', 'luks'],
-            input='mykey'
+            input='mykey'.encode('UTF-8')
         )
 
     @mock.patch.object(dmcrypt, 'os')
     def test_generate_key(self, _os):
-        _key = 'randomdatastringfromentropy'
+        _key = b'randomdatastringfromentropy'
         _os.urandom.return_value = _key
         self.assertEqual(dmcrypt.generate_key(),
                          base64.b64encode(_key).decode('UTF-8'))
-        _os.urandom.assert_called_with(4096 / 8)
+        _os.urandom.assert_called_with(dmcrypt.KEY_SIZE / 8)

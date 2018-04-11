@@ -5,4 +5,5 @@ encoding//vaultlocker/shell.py=utf-8
 encoding//vaultlocker/systemd.py=utf-8
 encoding//vaultlocker/tests/base.py=utf-8
 encoding//vaultlocker/tests/test_dmcrypt.py=utf-8
+encoding//vaultlocker/tests/test_systemd.py=utf-8
 encoding//vaultlocker/tests/test_vaultlocker.py=utf-8
