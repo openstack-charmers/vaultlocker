@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
 # a copy of the License at
@@ -37,12 +39,26 @@ def _vault_client(config):
 
 
 def _get_vault_path(device_uuid, config):
+    """Generate full vault path for a given block device UUID
+
+    :param: device_uuid: String of the device UUID
+    :param: config: configparser object of vaultlocker config
+    :returns: str: Path to vault resource for device
+    """
     return '{}/{}/{}'.format(config.get('vault', 'backend'),
                              socket.gethostname(),
                              device_uuid)
 
 
 def _encrypt_block_device(args, client, config):
+    """Encrypt and open a block device
+
+    Stores the dm-crypt key direct in vault
+
+    :param: args: argparser generated cli arguments
+    :param: client: hvac.Client for Vault access
+    :param: config: configparser object of vaultlocker config
+    """
     block_device = args.block_device[0]
     key = dmcrypt.generate_key()
     block_uuid = str(uuid.uuid4()) if not args.uuid else args.uuid
@@ -62,6 +78,14 @@ def _encrypt_block_device(args, client, config):
 
 
 def _decrypt_block_device(args, client, config):
+    """Open a LUKS/dm-crypt encrypted block device
+
+    The devices dm-crypt key is retrieved from Vault
+
+    :param: args: argparser generated cli arguments
+    :param: client: hvac.Client for Vault access
+    :param: config: configparser object of vaultlocker config
+    """
     block_uuid = args.uuid[0]
     vault_path = _get_vault_path(block_uuid, config)
 
@@ -74,6 +98,12 @@ def _decrypt_block_device(args, client, config):
 
 
 def _do_it_with_persistence(func, args, config):
+    """Exec func with retries based on provided cli flags
+
+    :param: func: function to attempt to execute
+    :param: args: argparser generated cli arguments
+    :param: config: configparser object of vaultlocker config
+    """
     @tenacity.retry(
         wait=tenacity.wait_fixed(1),
         stop=(
@@ -92,14 +122,28 @@ def _do_it_with_persistence(func, args, config):
 
 
 def encrypt(args, config):
+    """Encrypt and open handler
+
+    :param: args: argparser generated cli arguments
+    :param: config: configparser object of vaultlocker config
+    """
     _do_it_with_persistence(_encrypt_block_device, args, config)
 
 
 def decrypt(args, config):
+    """Decrypt and open handler
+
+    :param: args: argparser generated cli arguments
+    :param: config: configparser object of vaultlocker config
+    """
     _do_it_with_persistence(_decrypt_block_device, args, config)
 
 
 def get_config():
+    """Read vaultlocker configuration from config file
+
+    :returns: configparser. Parsed configuration options
+    """
     config = configparser.ConfigParser()
     if os.path.exists(CONF_FILE):
         config.read(CONF_FILE)
