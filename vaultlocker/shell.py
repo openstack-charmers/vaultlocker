@@ -32,7 +32,11 @@ CONF_FILE = '/etc/vaultlocker/vaultlocker.conf'
 
 
 def _vault_client(config):
-    """Helper wrapper to create Vault Client"""
+    """Helper wrapper to create Vault Client
+
+    :param: config: configparser object of vaultlocker config
+    :returns: hvac.Client. configured Vault Client object
+    """
     client = hvac.Client(url=config.get('vault', 'url'))
     client.auth_approle(config.get('vault', 'approle'))
     return client
