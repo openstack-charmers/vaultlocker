@@ -4,8 +4,11 @@ python:
   - "3.4"
   - "3.5"
   - "3.6"
+before_install:
+  - sudo -E bash ./gate/travis-vault.sh
 install:
   - pip install -r requirements.txt -c https://git.openstack.org/cgit/openstack/requirements/plain/upper-constraints.txt
   - pip install -r test-requirements.txt -c https://git.openstack.org/cgit/openstack/requirements/plain/upper-constraints.txt
 script:
   - stestr run "^vaultlocker.tests.unit.*"
+  - pifpaf run vault -- stestr run "^vaultlocker.tests.functional.*"
