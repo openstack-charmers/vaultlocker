@@ -78,12 +78,15 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
         self.approle_uuid = self.vault_client.get_role_id(self.vault_approle)
 
         self.test_config = {
-            'url': self.vault_addr,
-            'approle': self.approle_uuid,
-            'backend': self.vault_backend,
+            'vault': {
+                'url': self.vault_addr,
+                'approle': self.approle_uuid,
+                'backend': self.vault_backend,
+            }
         }
         self.config = mock.MagicMock()
-        self.config.get.side_effect = lambda _, k: self.test_config.get(k)
+        self.config.get.side_effect = \
+            lambda s, k: self.test_config.get(s).get(k)
 
     def tearDown(self):
         super(VaultlockerFuncBaseTestCase, self).tearDown()
