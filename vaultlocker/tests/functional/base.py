@@ -21,6 +21,7 @@ import os
 import uuid
 
 from oslotest import base
+from testtools import testcase
 
 
 TEST_POLICY = '''
@@ -47,7 +48,7 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
         self.vault_approle = 'vaultlocker-approle-{}'.format(self.test_uuid)
 
         if not self.vault_addr or not self.root_token:
-            return
+            raise testcase.TestSkipped('Vault not running')
 
         self.vault_client = hvac.Client(url=self.vault_addr,
                                         token=self.root_token)
