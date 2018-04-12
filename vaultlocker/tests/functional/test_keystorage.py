@@ -69,3 +69,16 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
         _systemd.enable.assert_not_called()
         _luks_open.assert_called_once_with('testkey',
                                            'passed-UUID')
+
+    def test_decrypt_missing_key(self, _luks_open, _luks_format, _systemd):
+        """Test decrypt function errors if a key is missing from vault"""
+        args = mock.MagicMock()
+        args.uuid = ['passed-UUID']
+        args.retry = -1
+
+        self.assertRaises(ValueError,
+                          shell.decrypt,
+                          args, self.config)
+        _luks_format.assert_not_called()
+        _systemd.enable.assert_not_called()
+        _luks_open.assert_not_called()

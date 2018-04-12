@@ -110,6 +110,7 @@ def _do_it_with_persistence(func, args, config):
     """
     @tenacity.retry(
         wait=tenacity.wait_fixed(1),
+        reraise=True,
         stop=(
             tenacity.stop_after_delay(args.retry) if args.retry > 0
             else tenacity.stop_after_attempt(1)
