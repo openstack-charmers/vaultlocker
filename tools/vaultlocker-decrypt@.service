@@ -1,7 +1,7 @@
 [Unit]
 Description=vaultlocker retrieve: %i
-After=network-online.target local-fs.target
-Wants=network-online.target local-fs.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
