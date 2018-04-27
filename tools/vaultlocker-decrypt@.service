@@ -1,5 +1,6 @@
 [Unit]
 Description=vaultlocker retrieve: %i
+DefaultDependencies=no
 After=network-online.target
 Wants=network-online.target
 
