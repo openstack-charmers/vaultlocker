@@ -41,9 +41,9 @@ UUID)::
 
     sudo vaultlocker decrypt f65b9e66-8f0c-4cae-b6f5-6ec85ea134f2
 
-Authentication to Vault is done using an AppRole without a secret_id; its assumed
-that a CIDR based ACL is in use to allow permitted systems within the Data Center
-to login and retrieve secrets from Vault.
+Authentication to Vault is done using an AppRole with a secret_id; its assumed
+that a CIDR based ACL is in use to only allow permitted systems within the
+Data Center to login and retrieve secrets from Vault.
 
 * Free software: Apache license
 * Documentation: https://docs.openstack.org/vaultlocker/latest

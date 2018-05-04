@@ -30,6 +30,7 @@ class TestVaultlocker(base.TestCase):
     _test_config = {
         'url': 'https://vaultlocker.test.com',
         'approle': '85e4c349-7547-4ad5-9172-d82a45d87b3e',
+        'secret_id': '9428ad25-7b4a-442f-8f20-f23be0575146',
         'backend': 'vaultlocker-test',
     }
 

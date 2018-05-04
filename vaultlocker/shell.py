@@ -38,7 +38,8 @@ def _vault_client(config):
     :returns: hvac.Client. configured Vault Client object
     """
     client = hvac.Client(url=config.get('vault', 'url'))
-    client.auth_approle(config.get('vault', 'approle'))
+    client.auth_approle(config.get('vault', 'approle'),
+                        secret_id=config.get('vault', 'secret_id'))
     return client
 
 

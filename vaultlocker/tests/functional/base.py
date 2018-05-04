@@ -74,14 +74,18 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
             token_ttl='60s',
             token_max_ttl='60s',
             policies=[self.vault_policy],
-            bind_secret_id='false',
+            bind_secret_id='true',
             bound_cidr_list='127.0.0.1/32')
         self.approle_uuid = self.vault_client.get_role_id(self.vault_approle)
+        self.secret_id = self.vault_client.write(
+            'auth/approle/role/{}/secret-id'.format(self.vault_approle)
+        )['data']['secret_id']
 
         self.test_config = {
             'vault': {
                 'url': self.vault_addr,
                 'approle': self.approle_uuid,
+                'secret_id': self.secret_id,
                 'backend': self.vault_backend,
             }
         }
