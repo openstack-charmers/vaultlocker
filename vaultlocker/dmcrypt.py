@@ -84,3 +84,20 @@ def luks_open(key, uuid):
     subprocess.check_output(command,
                             input=key.encode('UTF-8'))
     return handle
+
+
+def udevadm_settle(uuid):
+    """udevadm settle the newly created encrypted device
+
+    Ensure udev has created symlink for newly created encyprted device.
+    See LP Bug #1780332
+
+    :param: uuid: uuid to use for encrypted block device.
+    """
+    logger.info('udevadm settle /dev/disk/by-uuid/{}'.format(uuid))
+    command = [
+        'udevadm',
+        'settle',
+        '--exit-if-exists=/dev/disk/by-uuid/{}'.format(uuid),
+    ]
+    subprocess.check_output(command)
