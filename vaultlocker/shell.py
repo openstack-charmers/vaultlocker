@@ -70,6 +70,9 @@ def _encrypt_block_device(args, client, config):
     vault_path = _get_vault_path(block_uuid, config)
 
     dmcrypt.luks_format(key, block_device, block_uuid)
+    # Ensure sym link for new encrypted device is created
+    # LP Bug #1780332
+    dmcrypt.udevadm_settle(block_uuid)
 
     # NOTE: store and validate key
     client.write(vault_path,
