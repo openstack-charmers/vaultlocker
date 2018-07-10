@@ -7,4 +7,6 @@ encoding//vaultlocker/tests/functional/__init__.py=utf-8
 encoding//vaultlocker/tests/functional/base.py=utf-8
 encoding//vaultlocker/tests/functional/test_keystorage.py=utf-8
 encoding//vaultlocker/tests/unit/base.py=utf-8
+encoding//vaultlocker/tests/unit/test_dmcrypt.py=utf-8
+encoding//vaultlocker/tests/unit/test_systemd.py=utf-8
 encoding//vaultlocker/tests/unit/test_vaultlocker.py=utf-8

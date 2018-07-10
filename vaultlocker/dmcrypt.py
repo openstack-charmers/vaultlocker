@@ -86,6 +86,22 @@ def luks_open(key, uuid):
     return handle
 
 
+def udevadm_rescan():
+    """udevadm trigger for block device addition
+
+    Rescan for block devices to ensure that by-uuid devices are
+    created before use.
+    """
+    logger.info('udevadm trigger block/add')
+    command = [
+        'udevadm',
+        'trigger',
+        '--subsystem-match=block',
+        '--action=add'
+    ]
+    subprocess.check_output(command)
+
+
 def udevadm_settle(uuid):
     """udevadm settle the newly created encrypted device
 
