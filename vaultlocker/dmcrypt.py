@@ -105,8 +105,8 @@ def udevadm_rescan():
 def udevadm_settle(uuid):
     """udevadm settle the newly created encrypted device
 
-    Ensure udev has created symlink for newly created encyprted device.
-    See LP Bug #1780332
+    Ensure udev has created the by-uuid symlink for newly
+    created encyprted device.
 
     :param: uuid: uuid to use for encrypted block device.
     """
