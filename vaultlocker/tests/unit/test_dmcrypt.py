@@ -59,3 +59,22 @@ class TestDMCrypt(base.TestCase):
         self.assertEqual(dmcrypt.generate_key(),
                          base64.b64encode(_key).decode('UTF-8'))
         _os.urandom.assert_called_with(dmcrypt.KEY_SIZE / 8)
+
+    @mock.patch.object(dmcrypt, 'subprocess')
+    def test_udevadm_rescan(self, _subprocess):
+        dmcrypt.udevadm_rescan()
+        _subprocess.check_output.assert_called_once_with(
+            ['udevadm',
+             'trigger',
+             '--subsystem-match=block',
+             '--action=add']
+        )
+
+    @mock.patch.object(dmcrypt, 'subprocess')
+    def test_udevadm_settle(self, _subprocess):
+        dmcrypt.udevadm_settle('myuuid')
+        _subprocess.check_output.assert_called_once_with(
+            ['udevadm',
+             'settle',
+             '--exit-if-exists=/dev/disk/by-uuid/myuuid']
+        )

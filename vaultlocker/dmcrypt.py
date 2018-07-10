@@ -86,11 +86,27 @@ def luks_open(key, uuid):
     return handle
 
 
+def udevadm_rescan():
+    """udevadm trigger for block device addition
+
+    Rescan for block devices to ensure that by-uuid devices are
+    created before use.
+    """
+    logger.info('udevadm trigger block/add')
+    command = [
+        'udevadm',
+        'trigger',
+        '--subsystem-match=block',
+        '--action=add'
+    ]
+    subprocess.check_output(command)
+
+
 def udevadm_settle(uuid):
     """udevadm settle the newly created encrypted device
 
-    Ensure udev has created symlink for newly created encyprted device.
-    See LP Bug #1780332
+    Ensure udev has created the by-uuid symlink for newly
+    created encyprted device.
 
     :param: uuid: uuid to use for encrypted block device.
     """
