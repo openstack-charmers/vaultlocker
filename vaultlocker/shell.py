@@ -72,7 +72,7 @@ def _encrypt_block_device(args, client, config):
     dmcrypt.luks_format(key, block_device, block_uuid)
     # Ensure sym link for new encrypted device is created
     # LP Bug #1780332
-    dmcrypt.udevadm_rescan()
+    dmcrypt.udevadm_rescan(block_device)
     dmcrypt.udevadm_settle(block_uuid)
 
     # NOTE: store and validate key

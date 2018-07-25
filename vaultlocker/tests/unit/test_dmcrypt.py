@@ -62,11 +62,11 @@ class TestDMCrypt(base.TestCase):
 
     @mock.patch.object(dmcrypt, 'subprocess')
     def test_udevadm_rescan(self, _subprocess):
-        dmcrypt.udevadm_rescan()
+        dmcrypt.udevadm_rescan('/dev/vdb')
         _subprocess.check_output.assert_called_once_with(
             ['udevadm',
              'trigger',
-             '--subsystem-match=block',
+             '--name-match=/dev/vdb',
              '--action=add']
         )
 
