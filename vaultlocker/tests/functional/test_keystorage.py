@@ -21,6 +21,8 @@ from vaultlocker import shell
 from vaultlocker.tests.functional import base
 
 
+@mock.patch.object(shell.dmcrypt, 'udevadm_settle')
+@mock.patch.object(shell.dmcrypt, 'udevadm_rescan')
 @mock.patch.object(shell, 'systemd')
 @mock.patch.object(shell.dmcrypt, 'luks_format')
 @mock.patch.object(shell.dmcrypt, 'luks_open')
@@ -28,7 +30,8 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
 
     """Test storage and retrieval of dm-crypt keys from vault"""
 
-    def test_encrypt(self, _luks_open, _luks_format, _systemd):
+    def test_encrypt(self, _luks_open, _luks_format, _systemd,
+                     _udevadm_rescan, _udevadm_settle):
         """Test encrypt function stores correct data in vault"""
         args = mock.MagicMock()
         args.uuid = 'passed-UUID'
@@ -44,6 +47,8 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
         _systemd.enable.assert_called_once_with(
             'vaultlocker-decrypt@passed-UUID.service'
         )
+        _udevadm_rescan.assert_called_once_with('/dev/sdb')
+        _udevadm_settle.assert_called_once_with('passed-UUID')
 
         stored_data = self.vault_client.read(
             shell._get_vault_path('passed-UUID',
@@ -54,7 +59,8 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
         self.assertTrue('dmcrypt_key' in stored_data['data'],
                         'dm-crypt key data is missing')
 
-    def test_decrypt(self, _luks_open, _luks_format, _systemd):
+    def test_decrypt(self, _luks_open, _luks_format, _systemd,
+                     _udevadm_rescan, _udevadm_settle):
         """Test decrypt function retrieves correct key from vault"""
         args = mock.MagicMock()
         args.uuid = ['passed-UUID']
@@ -70,7 +76,8 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
         _luks_open.assert_called_once_with('testkey',
                                            'passed-UUID')
 
-    def test_decrypt_missing_key(self, _luks_open, _luks_format, _systemd):
+    def test_decrypt_missing_key(self, _luks_open, _luks_format, _systemd,
+                                 _udevadm_rescan, _udevadm_settle):
         """Test decrypt function errors if a key is missing from vault"""
         args = mock.MagicMock()
         args.uuid = ['passed-UUID']

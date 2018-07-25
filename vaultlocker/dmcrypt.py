@@ -86,17 +86,19 @@ def luks_open(key, uuid):
     return handle
 
 
-def udevadm_rescan():
+def udevadm_rescan(device):
     """udevadm trigger for block device addition
 
     Rescan for block devices to ensure that by-uuid devices are
     created before use.
+
+    :param: device: full path to block device to use.
     """
-    logger.info('udevadm trigger block/add')
+    logger.info('udevadm trigger block/add for {}'.format(device))
     command = [
         'udevadm',
         'trigger',
-        '--subsystem-match=block',
+        '--name-match={}'.format(device),
         '--action=add'
     ]
     subprocess.check_output(command)
