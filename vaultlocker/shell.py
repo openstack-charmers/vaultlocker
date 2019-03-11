@@ -43,16 +43,21 @@ def _vault_client(config):
     return client
 
 
-def _get_vault_path(device_uuid, config):
+def _get_vault_path(ext_stor, device_uuid, config):
     """Generate full vault path for a given block device UUID
 
     :param: device_uuid: String of the device UUID
     :param: config: configparser object of vaultlocker config
     :returns: str: Path to vault resource for device
     """
-    return '{}/{}/{}'.format(config.get('vault', 'backend'),
-                             socket.gethostname(),
-                             device_uuid)
+    if ext_stor:
+        return '{}/{}/{}'.format(config.get('vault', 'backend'),
+                                 "External_Storage",
+                                 device_uuid)
+    else:
+        return '{}/{}/{}'.format(config.get('vault', 'backend'),
+                                 socket.gethostname(),
+                                 device_uuid)
 
 
 def _encrypt_block_device(args, client, config):
@@ -67,7 +72,7 @@ def _encrypt_block_device(args, client, config):
     block_device = args.block_device[0]
     key = dmcrypt.generate_key()
     block_uuid = str(uuid.uuid4()) if not args.uuid else args.uuid
-    vault_path = _get_vault_path(block_uuid, config)
+    vault_path = _get_vault_path(args.ext_stor ,block_uuid, config)
 
     dmcrypt.luks_format(key, block_device, block_uuid)
     # Ensure sym link for new encrypted device is created
@@ -96,7 +101,7 @@ def _decrypt_block_device(args, client, config):
     :param: config: configparser object of vaultlocker config
     """
     block_uuid = args.uuid[0]
-    vault_path = _get_vault_path(block_uuid, config)
+    vault_path = _get_vault_path(args.ext_stor, block_uuid, config)
 
     stored_data = client.read(vault_path)
     if stored_data is None:
@@ -179,6 +184,11 @@ def main():
         'encrypt',
         help='Encrypt a block device and store its key in Vault'
     )
+    encrypt_parser.add_argument('--ext_stor',
+                                dest="ext_stor",
+                                default=False,
+                                action='store_true',
+                                help="External storage device")
     encrypt_parser.add_argument('--uuid',
                                 dest="uuid",
                                 help="UUID to use to reference encryption key")
@@ -191,6 +201,11 @@ def main():
         'decrypt',
         help='Decrypt a block device retrieving its key from Vault'
     )
+    decrypt_parser.add_argument('--ext_stor',
+                                dest="ext_stor",
+                                default=False,
+                                action='store_true',
+                                help="External storage device")
     decrypt_parser.add_argument('uuid',
                                 metavar='uuid', nargs=1,
                                 help='UUID of block device to decrypt')
