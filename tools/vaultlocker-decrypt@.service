@@ -1,7 +1,6 @@
 [Unit]
 Description=vaultlocker retrieve: %i
 DefaultDependencies=no
-After=systemd-networkd-wait-online.service
 After=networking.service
 
 [Service]
