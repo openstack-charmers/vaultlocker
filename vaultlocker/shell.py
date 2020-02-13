@@ -96,6 +96,12 @@ def _decrypt_block_device(args, client, config):
     :param: config: configparser object of vaultlocker config
     """
     block_uuid = args.uuid[0]
+
+    if _device_exists(block_uuid):
+        logger.info('Skipping setup of {} because '
+                    'it already exists.'.format(block_uuid))
+        return
+
     vault_path = _get_vault_path(block_uuid, config)
 
     stored_data = client.read(vault_path)
@@ -104,6 +110,14 @@ def _decrypt_block_device(args, client, config):
     key = stored_data['data']['dmcrypt_key']
 
     dmcrypt.luks_open(key, block_uuid)
+
+
+def _device_exists(block_uuid):
+    """Checks if the device already exists."""
+    handle = 'crypt-{}'.format(block_uuid)
+    path = "/dev/mapper/{}".format(handle)
+    logger.info('Checking if {} exists.'.format(path))
+    return os.path.exists(path)
 
 
 def _do_it_with_persistence(func, args, config):
