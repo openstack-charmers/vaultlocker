@@ -2,6 +2,7 @@
 Description=vaultlocker retrieve: %i
 DefaultDependencies=no
 After=networking.service
+Before=nova-compute.service
 
 [Service]
 Type=oneshot
@@ -12,3 +13,5 @@ TimeoutSec=0
 
 [Install]
 WantedBy=multi-user.target
+RequiredBy=nova-compute.service
+
