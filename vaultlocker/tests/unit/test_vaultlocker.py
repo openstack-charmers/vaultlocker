@@ -94,11 +94,12 @@ class TestVaultlocker(base.TestCase):
             args, client, self.config
         )
 
+    @mock.patch.object(shell, 'os')
     @mock.patch.object(shell, 'dmcrypt')
     @mock.patch.object(shell, '_get_vault_path')
-    def test_decrypt(self, _get_vault_path, _dmcrypt):
+    def test_decrypt(self, _get_vault_path, _dmcrypt, _os):
         _get_vault_path.return_value = 'backend/host/uuid'
-
+        _os.path.exists.return_value = False
         args = mock.MagicMock()
         args.uuid = ['passed-UUID']
 
@@ -114,6 +115,25 @@ class TestVaultlocker(base.TestCase):
         _dmcrypt.luks_open.assert_called_with(
             'testkey', 'passed-UUID'
         )
+
+    @mock.patch.object(shell, 'os')
+    @mock.patch.object(shell, '_get_vault_path')
+    def test_decrypt_already_exists(self, _get_vault_path, _os):
+        _os.path.exists.return_value = True
+
+        args = mock.MagicMock()
+        args.uuid = ['passed-UUID']
+        client = mock.MagicMock()
+        client.read.return_value = {
+            'data': {
+                'dmcrypt_key': 'testkey'
+            }
+        }
+
+        self.assertIsNone(
+            shell._decrypt_block_device(args, client, self.config))
+
+        _get_vault_path.assert_not_called()
 
     @mock.patch.object(shell, 'socket')
     def test_get_vault_path(self, _socket):
