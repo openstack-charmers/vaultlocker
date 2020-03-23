@@ -2,6 +2,7 @@
 Description=vaultlocker retrieve: %i
 DefaultDependencies=no
 After=networking.service
+After=nss-lookup.target
 
 [Service]
 Type=oneshot
