@@ -19,6 +19,7 @@ import os
 import socket
 import tenacity
 import uuid
+import subprocess
 
 from six.moves import configparser
 
@@ -69,19 +70,25 @@ def _encrypt_block_device(args, client, config):
     block_uuid = str(uuid.uuid4()) if not args.uuid else args.uuid
     vault_path = _get_vault_path(block_uuid, config)
 
-    dmcrypt.luks_format(key, block_device, block_uuid)
-    # Ensure sym link for new encrypted device is created
-    # LP Bug #1780332
-    dmcrypt.udevadm_rescan(block_device)
-    dmcrypt.udevadm_settle(block_uuid)
-
-    # NOTE: store and validate key
+    # NOTE: store and validate key before trying to encrypt disk
     client.write(vault_path,
                  dmcrypt_key=key)
     stored_data = client.read(vault_path)
     assert key == stored_data['data']['dmcrypt_key']
 
-    dmcrypt.luks_open(key, block_uuid)
+    # All function calls within try/catch raise a CalledProcessError if return code is non-zero
+    # This way if any of the calls fail, the key can be removed from vault
+    try:
+        dmcrypt.luks_format(key, block_device, block_uuid)
+        # Ensure sym link for new encrypted device is created
+        # LP Bug #1780332
+        dmcrypt.udevadm_rescan(block_device)
+        dmcrypt.udevadm_settle(block_uuid)
+        dmcrypt.luks_open(key, block_uuid)
+    except subprocess.CalledProcessError as luks_error:
+        logger.error('LUKS formatting {} failed with error code:{}\nLUKS output: {}'.format(block_device,luks_error.returncode,luks_error.output))
+        client.delete(vault_path)
+        raise luks_error
 
     systemd.enable('vaultlocker-decrypt@{}.service'.format(block_uuid))
 
