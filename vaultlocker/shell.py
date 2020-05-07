@@ -19,12 +19,12 @@ import os
 import socket
 import tenacity
 import uuid
-import subprocess
 
 from six.moves import configparser
-
+import subprocess
 from vaultlocker import dmcrypt
 from vaultlocker import systemd
+from vaultlocker import vault_exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +71,26 @@ def _encrypt_block_device(args, client, config):
     vault_path = _get_vault_path(block_uuid, config)
 
     # NOTE: store and validate key before trying to encrypt disk
-    client.write(vault_path,
-                 dmcrypt_key=key)
-    stored_data = client.read(vault_path)
-    assert key == stored_data['data']['dmcrypt_key']
+    try:
+        client.write(vault_path,
+                     dmcrypt_key=key)
+    except hvac.exceptions.VaultError as write_error:
+        logger.error('Vault write to path {}. \
+            Failed with error:{}'.format(vault_path, write_error))
+        raise vault_exceptions.VaultWriteError(vault_path, write_error)
 
-    # All function calls within try/catch raise a CalledProcessError if return code is non-zero
+    try:
+        stored_data = client.read(vault_path)
+    except hvac.exceptions.VaultError as read_error:
+        logger.error('Vault access to path {} \
+            failed with error:{}'.format(vault_path, read_error))
+        raise vault_exceptions.VaultReadError(vault_path, read_error)
+
+    if not key == stored_data['data']['dmcrypt_key']:
+        raise vault_exceptions.VaultKeyMismatch(vault_path)
+
+    # All function calls within try/catch raise a CalledProcessError
+    # if return code is non-zero
     # This way if any of the calls fail, the key can be removed from vault
     try:
         dmcrypt.luks_format(key, block_device, block_uuid)
@@ -86,9 +100,16 @@ def _encrypt_block_device(args, client, config):
         dmcrypt.udevadm_settle(block_uuid)
         dmcrypt.luks_open(key, block_uuid)
     except subprocess.CalledProcessError as luks_error:
-        logger.error('LUKS formatting {} failed with error code:{}\nLUKS output: {}'.format(block_device,luks_error.returncode,luks_error.output))
-        client.delete(vault_path)
-        raise luks_error
+        logger.error('LUKS formatting {} failed with error code:{}\n\
+            LUKS output: {}'.format(block_device,
+                                    luks_error.returncode, luks_error.output))
+
+        try:
+            client.delete(vault_path)
+        except hvac.exceptions.VaultError as del_error:
+            raise vault_exceptions.VaultDeleteError(vault_path, del_error)
+
+        raise vault_exceptions.LUKSFailure(block_device, luks_error.output)
 
     systemd.enable('vaultlocker-decrypt@{}.service'.format(block_uuid))
 
