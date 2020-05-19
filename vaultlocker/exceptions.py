@@ -32,8 +32,8 @@ class VaultWriteError(VaultlockerException):
         self.error = error
 
     def __str__(self):
-        return "Can't write to vault at path {},\
-             error: {}".format(self.path, self.error)
+        return "Can't write to vault at path {}, error: {}".format(
+            self.path, self.error)
 
 
 class VaultReadError(VaultlockerException):
@@ -43,8 +43,8 @@ class VaultReadError(VaultlockerException):
         self.error = error
 
     def __str__(self):
-        return "Can't read vault at path {},\
-             error: {}".format(self.path, self.error)
+        return "Can't read vault at path {}, error: {}".format(
+            self.path, self.error)
 
 
 class VaultDeleteError(VaultlockerException):
@@ -54,8 +54,8 @@ class VaultDeleteError(VaultlockerException):
         self.error = error
 
     def __str__(self):
-        return "Can't delete vault key at path {},\
-             error: {}".format(self.path, self.error)
+        return "Can't delete vault key at path {}, error: {}".format(
+            self.path, self.error)
 
 
 class VaultKeyMismatch(VaultlockerException):
@@ -64,8 +64,8 @@ class VaultKeyMismatch(VaultlockerException):
         self.path = path
 
     def __str__(self):
-        return "Vault key at path {} does not match\
-             with generated key".format(self.path)
+        return "Vault key at path {} does not match with generated key".format(
+            self.path)
 
 
 class LUKSFailure(VaultlockerException):
@@ -75,5 +75,5 @@ class LUKSFailure(VaultlockerException):
         self.error = error
 
     def __str__(self):
-        return "Can't operate on {}.\
-             Error: {}".format(self.block_device, self.error)
+        return "Can't operate on {}. Error: {}".format(
+            self.block_device, self.error)
