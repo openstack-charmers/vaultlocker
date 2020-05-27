@@ -24,7 +24,7 @@ from six.moves import configparser
 import subprocess
 from vaultlocker import dmcrypt
 from vaultlocker import systemd
-from vaultlocker import vault_exceptions
+from vaultlocker import exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -78,17 +78,17 @@ def _encrypt_block_device(args, client, config):
         logger.error(
             'Vault write to path {}. Failed with error:{}'.format(
                 vault_path, write_error))
-        raise vault_exceptions.VaultWriteError(vault_path, write_error)
+        raise exceptions.VaultWriteError(vault_path, write_error)
 
     try:
         stored_data = client.read(vault_path)
     except hvac.exceptions.VaultError as read_error:
         logger.error('Vault access to path {}'
                      'failed with error:{}'.format(vault_path, read_error))
-        raise vault_exceptions.VaultReadError(vault_path, read_error)
+        raise exceptions.VaultReadError(vault_path, read_error)
 
     if not key == stored_data['data']['dmcrypt_key']:
-        raise vault_exceptions.VaultKeyMismatch(vault_path)
+        raise exceptions.VaultKeyMismatch(vault_path)
 
     # All function calls within try/catch raise a CalledProcessError
     # if return code is non-zero
@@ -111,9 +111,9 @@ def _encrypt_block_device(args, client, config):
         try:
             client.delete(vault_path)
         except hvac.exceptions.VaultError as del_error:
-            raise vault_exceptions.VaultDeleteError(vault_path, del_error)
+            raise exceptions.VaultDeleteError(vault_path, del_error)
 
-        raise vault_exceptions.LUKSFailure(block_device, luks_error.output)
+        raise exceptions.LUKSFailure(block_device, luks_error.output)
 
     systemd.enable('vaultlocker-decrypt@{}.service'.format(block_uuid))
 

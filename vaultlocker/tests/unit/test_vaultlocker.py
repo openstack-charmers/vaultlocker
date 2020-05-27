@@ -24,7 +24,7 @@ import subprocess
 
 from vaultlocker import shell
 from vaultlocker.tests.unit import base
-from vaultlocker import vault_exceptions
+from vaultlocker import exceptions
 
 
 class TestVaultlocker(base.TestCase):
@@ -91,7 +91,7 @@ class TestVaultlocker(base.TestCase):
         }
 
         self.assertRaises(
-            vault_exceptions.VaultKeyMismatch,
+            exceptions.VaultKeyMismatch,
             shell._encrypt_block_device,
             args, client, self.config
         )
@@ -165,7 +165,7 @@ class TestVaultlocker(base.TestCase):
         }
 
         self.assertRaises(
-            vault_exceptions.LUKSFailure,
+            exceptions.LUKSFailure,
             shell._encrypt_block_device,
             args, client, self.config
         )
