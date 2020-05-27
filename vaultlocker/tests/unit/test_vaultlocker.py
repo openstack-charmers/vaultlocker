@@ -171,3 +171,73 @@ class TestVaultlocker(base.TestCase):
         )
 
         client.delete.assert_called_once_with('backend/host/uuid')
+
+    @mock.patch.object(shell, 'systemd')
+    @mock.patch.object(shell, 'dmcrypt')
+    @mock.patch.object(shell, '_get_vault_path')
+    def test_vault_write_operation(self, _get_vault_path,
+                                   _dmcrypt, _systemd):
+        _get_vault_path.return_value = 'backend/host/uuid'
+        _dmcrypt.generate_key.return_value = 'testkey'
+
+        args = mock.MagicMock()
+        args.uuid = 'passed-UUID'
+        args.block_device = ['/dev/sdb']
+
+        client = mock.MagicMock()
+        client.read.return_value = {
+            'data': {
+                'dmcrypt_key': 'testkey'
+            }
+        }
+
+        self.assertIsNot(
+            exceptions.VaultWriteError,
+            shell._encrypt_block_device(
+                args,
+                client,
+                self.config))
+
+        client.write.side_effect = exceptions.VaultWriteError(
+            'backend/host/uuid', 'Write Failed')
+        self.assertRaises(
+            exceptions.VaultWriteError,
+            shell._encrypt_block_device,
+            args,
+            client,
+            self.config)
+
+    @mock.patch.object(shell, 'systemd')
+    @mock.patch.object(shell, 'dmcrypt')
+    @mock.patch.object(shell, '_get_vault_path')
+    def test_vault_read_operation(self, _get_vault_path,
+                                  _dmcrypt, _systemd):
+        _get_vault_path.return_value = 'backend/host/uuid'
+        _dmcrypt.generate_key.return_value = 'testkey'
+
+        args = mock.MagicMock()
+        args.uuid = 'passed-UUID'
+        args.block_device = ['/dev/sdb']
+
+        client = mock.MagicMock()
+        client.read.return_value = {
+            'data': {
+                'dmcrypt_key': 'testkey'
+            }
+        }
+
+        self.assertIsNot(
+            exceptions.VaultReadError,
+            shell._encrypt_block_device(
+                args,
+                client,
+                self.config))
+
+        client.read.side_effect = exceptions.VaultReadError(
+            'backend/host/uuid', 'Write Failed')
+        self.assertRaises(
+            exceptions.VaultReadError,
+            shell._encrypt_block_device,
+            args,
+            client,
+            self.config)
