@@ -23,8 +23,8 @@ import uuid
 from six.moves import configparser
 import subprocess
 from vaultlocker import dmcrypt
-from vaultlocker import systemd
 from vaultlocker import exceptions
+from vaultlocker import systemd
 
 logger = logging.getLogger(__name__)
 

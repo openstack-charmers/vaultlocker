@@ -22,9 +22,9 @@ Tests for `vaultlocker` module.
 import mock
 import subprocess
 
+from vaultlocker import exceptions
 from vaultlocker import shell
 from vaultlocker.tests.unit import base
-from vaultlocker import exceptions
 
 
 class TestVaultlocker(base.TestCase):
