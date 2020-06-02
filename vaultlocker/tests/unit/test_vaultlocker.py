@@ -20,7 +20,9 @@ Tests for `vaultlocker` module.
 """
 
 import mock
+import subprocess
 
+from vaultlocker import exceptions
 from vaultlocker import shell
 from vaultlocker.tests.unit import base
 
@@ -89,7 +91,7 @@ class TestVaultlocker(base.TestCase):
         }
 
         self.assertRaises(
-            AssertionError,
+            exceptions.VaultKeyMismatch,
             shell._encrypt_block_device,
             args, client, self.config
         )
@@ -140,3 +142,102 @@ class TestVaultlocker(base.TestCase):
         _socket.gethostname.return_value = 'myhost'
         self.assertEqual(shell._get_vault_path('my-UUID', self.config),
                          'vaultlocker-test/myhost/my-UUID')
+
+    @mock.patch.object(shell, 'systemd')
+    @mock.patch.object(shell, 'dmcrypt')
+    @mock.patch.object(shell, '_get_vault_path')
+    def test_encrypt_luks_failure(self, _get_vault_path, _dmcrypt, _systemd):
+        _get_vault_path.return_value = 'backend/host/uuid'
+        _dmcrypt.generate_key.return_value = 'testkey'
+        _dmcrypt.luks_format.side_effect = \
+            subprocess.CalledProcessError(returncode=-1,
+                                          cmd="echo Unit Test")
+
+        args = mock.MagicMock()
+        args.uuid = 'passed-UUID'
+        args.block_device = ['/dev/sdb']
+
+        client = mock.MagicMock()
+        client.read.return_value = {
+            'data': {
+                'dmcrypt_key': 'testkey'
+            }
+        }
+
+        self.assertRaises(
+            exceptions.LUKSFailure,
+            shell._encrypt_block_device,
+            args, client, self.config
+        )
+
+        client.delete.assert_called_once_with('backend/host/uuid')
+
+    @mock.patch.object(shell, 'systemd')
+    @mock.patch.object(shell, 'dmcrypt')
+    @mock.patch.object(shell, '_get_vault_path')
+    def test_vault_write_operation(self, _get_vault_path,
+                                   _dmcrypt, _systemd):
+        _get_vault_path.return_value = 'backend/host/uuid'
+        _dmcrypt.generate_key.return_value = 'testkey'
+
+        args = mock.MagicMock()
+        args.uuid = 'passed-UUID'
+        args.block_device = ['/dev/sdb']
+
+        client = mock.MagicMock()
+        client.read.return_value = {
+            'data': {
+                'dmcrypt_key': 'testkey'
+            }
+        }
+
+        self.assertIsNot(
+            exceptions.VaultWriteError,
+            shell._encrypt_block_device(
+                args,
+                client,
+                self.config))
+
+        client.write.side_effect = exceptions.VaultWriteError(
+            'backend/host/uuid', 'Write Failed')
+        self.assertRaises(
+            exceptions.VaultWriteError,
+            shell._encrypt_block_device,
+            args,
+            client,
+            self.config)
+
+    @mock.patch.object(shell, 'systemd')
+    @mock.patch.object(shell, 'dmcrypt')
+    @mock.patch.object(shell, '_get_vault_path')
+    def test_vault_read_operation(self, _get_vault_path,
+                                  _dmcrypt, _systemd):
+        _get_vault_path.return_value = 'backend/host/uuid'
+        _dmcrypt.generate_key.return_value = 'testkey'
+
+        args = mock.MagicMock()
+        args.uuid = 'passed-UUID'
+        args.block_device = ['/dev/sdb']
+
+        client = mock.MagicMock()
+        client.read.return_value = {
+            'data': {
+                'dmcrypt_key': 'testkey'
+            }
+        }
+
+        self.assertIsNot(
+            exceptions.VaultReadError,
+            shell._encrypt_block_device(
+                args,
+                client,
+                self.config))
+
+        client.read.side_effect = exceptions.VaultReadError(
+            'backend/host/uuid', 'Write Failed')
+        self.assertRaises(
+            exceptions.VaultReadError,
+            shell._encrypt_block_device,
+            args,
+            client,
+            self.config)
