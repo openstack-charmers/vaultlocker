@@ -76,7 +76,7 @@ def _encrypt_block_device(args, client, config):
                      dmcrypt_key=key)
     except hvac.exceptions.VaultError as write_error:
         logger.error(
-            'Vault write to path {}. Failed with error:{}'.format(
+            'Vault write to path {}. Failed with error: {}'.format(
                 vault_path, write_error))
         raise exceptions.VaultWriteError(vault_path, write_error)
 
@@ -84,7 +84,7 @@ def _encrypt_block_device(args, client, config):
         stored_data = client.read(vault_path)
     except hvac.exceptions.VaultError as read_error:
         logger.error('Vault access to path {}'
-                     'failed with error:{}'.format(vault_path, read_error))
+                     'failed with error: {}'.format(vault_path, read_error))
         raise exceptions.VaultReadError(vault_path, read_error)
 
     if not key == stored_data['data']['dmcrypt_key']:
@@ -102,7 +102,7 @@ def _encrypt_block_device(args, client, config):
         dmcrypt.luks_open(key, block_uuid)
     except subprocess.CalledProcessError as luks_error:
         logger.error(
-            'LUKS formatting {} failed with error code:{}\n'
+            'LUKS formatting {} failed with error code: {}\n'
             'LUKS output: {}'.format(
                 block_device,
                 luks_error.returncode,

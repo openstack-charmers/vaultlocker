@@ -28,52 +28,34 @@ class VaultlockerException(Exception):
 class VaultWriteError(VaultlockerException):
 
     def __init__(self, path, error):
-        self.path = path
-        self.error = error
-
-    def __str__(self):
-        return "Can't write to vault at path {}, error: {}".format(
-            self.path, self.error)
+        super().__init__("Can't write to vault at path {}, error: {}".format(
+            path, error))
 
 
 class VaultReadError(VaultlockerException):
 
     def __init__(self, path, error):
-        self.path = path
-        self.error = error
-
-    def __str__(self):
-        return "Can't read vault at path {}, error: {}".format(
-            self.path, self.error)
+        super().__init__("Can't read vault at path {}, error: {}".format(
+            path, error))
 
 
 class VaultDeleteError(VaultlockerException):
 
     def __init__(self, path, error):
-        self.path = path
-        self.error = error
-
-    def __str__(self):
-        return "Can't delete vault key at path {}, error: {}".format(
-            self.path, self.error)
+        super().__init__("Can't delete vault key at path {}, error: {}".format(
+            path, error))
 
 
 class VaultKeyMismatch(VaultlockerException):
 
     def __init__(self, path):
-        self.path = path
-
-    def __str__(self):
-        return "Vault key at path {} does not match with generated key".format(
-            self.path)
+        super().__init__(
+            "Vault key at path {} does not match with generated key".format(
+                path))
 
 
 class LUKSFailure(VaultlockerException):
 
     def __init__(self, block_device, error):
-        self.block_device = block_device
-        self.error = error
-
-    def __str__(self):
-        return "Can't operate on {}. Error: {}".format(
-            self.block_device, self.error)
+        super().__init__("Can't operate on {}. Error: {}".format(
+            block_device, error))
