@@ -40,7 +40,8 @@ def _vault_client(config):
     """
     client = hvac.Client(url=config.get('vault', 'url'))
     client.auth_approle(config.get('vault', 'approle'),
-                        secret_id=config.get('vault', 'secret_id'))
+                        secret_id=config.get('vault', 'secret_id'),
+                        mount_point=config.get('vault', 'mount_point'))
     return client
 
 
