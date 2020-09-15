@@ -91,7 +91,7 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
         }
         self.config = mock.MagicMock()
         self.config.get.side_effect = \
-            lambda s, k: self.test_config.get(s).get(k)
+            lambda s, k, **kwargs: self.test_config.get(s).get(k)
 
     def tearDown(self):
         super(VaultlockerFuncBaseTestCase, self).tearDown()
