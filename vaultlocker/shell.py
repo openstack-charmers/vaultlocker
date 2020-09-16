@@ -29,7 +29,7 @@ from vaultlocker import systemd
 logger = logging.getLogger(__name__)
 
 RUN_VAULTLOCKER = '/run/vaultlocker'
-CONF_FILE = '/etc/vaultlocker/vaultlocker.conf'
+DEFAULT_CONF_FILE = '/etc/vaultlocker/vaultlocker.conf'
 
 
 def _vault_client(config):
@@ -198,14 +198,19 @@ def decrypt(args, config):
     _do_it_with_persistence(_decrypt_block_device, args, config)
 
 
-def get_config():
+def get_config(config_path):
     """Read vaultlocker configuration from config file
 
+    :param: config_path: path to the configuration file
     :returns: configparser. Parsed configuration options
     """
     config = configparser.ConfigParser()
-    if os.path.exists(CONF_FILE):
-        config.read(CONF_FILE)
+    if os.path.exists(config_path):
+        config.read(config_path)
+    else:
+        raise FileNotFoundError(
+            "Configuration file not found: {}".format(config_path)
+        )
     return config
 
 
@@ -222,6 +227,12 @@ def main():
         default=-1,
         type=int,
         help="Time in seconds to continue retrying to connect to Vault"
+    )
+    parser.add_argument(
+        '--config',
+        default=DEFAULT_CONF_FILE,
+        type=str,
+        help="Path to vaultlocker configuration file"
     )
 
     encrypt_parser = subparsers.add_parser(
@@ -250,7 +261,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
 
     try:
-        args.func(args, get_config())
+        args.func(args, get_config(args.config))
     except Exception as e:
         raise SystemExit(
             '{prog}: {msg}'.format(
