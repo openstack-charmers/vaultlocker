@@ -39,7 +39,10 @@ class TestVaultlocker(base.TestCase):
     def __init__(self, *args, **kwds):
         super(TestVaultlocker, self).__init__(*args, **kwds)
         self.config = mock.MagicMock()
-        self.config.get.side_effect = lambda _, k: self._test_config.get(k)
+
+        def side_effect(_, k, **kwargs):
+            return self._test_config.get(k)
+        self.config.get.side_effect = side_effect
 
     @mock.patch.object(shell, 'systemd')
     @mock.patch.object(shell, 'dmcrypt')
