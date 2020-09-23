@@ -186,7 +186,14 @@ def encrypt(args, config):
     :param: args: argparser generated cli arguments
     :param: config: configparser object of vaultlocker config
     """
-    _do_it_with_persistence(_encrypt_block_device, args, config)
+    if (os.path.exists('/usr/lib/systemd/system/vaultlocker-decrypt@.service') or
+        os.path.exists('/etc/systemd/system/vaultlocker-decrypt@.service')):
+        _do_it_with_persistence(_encrypt_block_device, args, config)
+    else:
+        raise FileNotFoundError("""
+            Systemd Unit vaultlocker-encrypt@.service not found
+            in /usr/lib/systemd/system/ or /etc/systemd/system/
+            """)
 
 
 def decrypt(args, config):
