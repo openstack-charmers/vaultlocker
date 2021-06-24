@@ -43,7 +43,8 @@ def _vault_client(config):
         verify=config.get('vault', 'ca_bundle', fallback=True)
     )
     client.auth_approle(config.get('vault', 'approle'),
-                        secret_id=config.get('vault', 'secret_id'))
+                        secret_id=config.get('vault', 'secret_id'),
+                        mount_point=config.get('vault', 'mount_point'))
     return client
 
 
@@ -204,7 +205,7 @@ def get_config(config_path):
     :param: config_path: path to the configuration file
     :returns: configparser. Parsed configuration options
     """
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser({'mount_point': 'approle'})
     if os.path.exists(config_path):
         config.read(config_path)
     else:
