@@ -40,11 +40,13 @@ def _vault_client(config):
     """
     client = hvac.Client(
         url=config.get('vault', 'url'),
-        verify=config.get('vault', 'ca_bundle', fallback=True)
+        token=config.get('vault', 'token', fallback=None),
+        verify=config.get('vault', 'ca_bundle', fallback=True),
+        namespace=config.get('vault', 'namespace', fallback=None)
     )
-    client.auth_approle(config.get('vault', 'approle'),
-                        secret_id=config.get('vault', 'secret_id'),
-                        mount_point=config.get('vault', 'mount_point'))
+    client.auth.approle.login(config.get('vault', 'role_id'),
+                        secret_id=config.get('vault', 'secret_id', fallback=None),
+                        mount_point=config.get('vault', 'mount_point', fallback="approle"))
     return client
 
 
@@ -205,7 +207,7 @@ def get_config(config_path):
     :param: config_path: path to the configuration file
     :returns: configparser. Parsed configuration options
     """
-    config = configparser.ConfigParser({'mount_point': 'approle'})
+    config = configparser.ConfigParser()
     if os.path.exists(config_path):
         config.read(config_path)
     else:
