@@ -18,7 +18,7 @@ vaultlocker is configured using `/etc/vaultlocker/vaultlocker.conf`::
 
     [vault]
     url = https://vault.internal:8200
-    approle = 4a1b84d2-7bb2-4c07-9804-04d1683ac925
+    role_id = 4a1b84d2-7bb2-4c07-9804-04d1683ac925
     backend = secret
 
 vaultlocker defaults to using a backend with the name `secret`.
