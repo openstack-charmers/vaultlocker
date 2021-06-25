@@ -44,7 +44,7 @@ def _vault_client(config):
         verify=config.get('vault', 'ca_bundle', fallback=True),
         namespace=config.get('vault', 'namespace', fallback=None)
     )
-    client.auth.approle.login(config.get('vault', 'role_id', fallback=config.get('vault', 'approle')),
+    client.auth.approle.login(config.get('vault', 'approle', fallback=config.get('vault', 'role_id')),
                               secret_id=config.get('vault', 'secret_id', fallback=None),
                               mount_point=config.get('vault', 'mount_point', fallback="approle"))
     return client
@@ -102,11 +102,11 @@ def _encrypt_block_device(args, client, config):
                      'failed with error: {}'.format(vault_path, read_error))
         raise exceptions.VaultReadError(vault_path, read_error)
 
-    if not key == stored_data['data']['data']['dmcrypt_key'] and config.get('vault', 'kv_version') == '2':
-        raise exceptions.VaultKeyMismatch(vault_path)
+        if not key == stored_data['data']['data']['dmcrypt_key'] and config.get('vault', 'kv_version') == '2':
+            raise exceptions.VaultKeyMismatch(vault_path)
 
-    elif not key == stored_data['data']['dmcrypt_key'] and config.get('vault', 'kv_version') == '1':
-        raise exceptions.VaultKeyMismatch(vault_path)
+        elif not key == stored_data['data']['dmcrypt_key'] and config.get('vault', 'kv_version') == '1':
+            raise exceptions.VaultKeyMismatch(vault_path)
 
     # All function calls within try/catch raise a CalledProcessError
     # if return code is non-zero
