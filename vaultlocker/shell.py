@@ -44,7 +44,11 @@ def _vault_client(config):
         verify=config.get('vault', 'ca_bundle', fallback=True),
         namespace=config.get('vault', 'namespace', fallback=None)
     )
-    client.auth.approle.login(config.get('vault', 'approle', fallback=config.get('vault', 'role_id')),
+    if not config.get('vault', 'role_id', fallback=None) is None:
+        role_id=config.get('vault', 'role_id')
+    if not config.get('vault', 'approle', fallback=None) is None:
+        role_id=config.get('vault', 'approle')
+    client.auth.approle.login(role_id,
                               secret_id=config.get('vault', 'secret_id', fallback=None),
                               mount_point=config.get('vault', 'mount_point', fallback="approle"))
     return client
