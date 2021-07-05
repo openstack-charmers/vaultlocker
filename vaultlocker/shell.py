@@ -50,7 +50,7 @@ def _vault_client(config):
         role_id=config.get('vault', 'approle')
     client.auth.approle.login(role_id,
                               secret_id=config.get('vault', 'secret_id', fallback=None),
-                              mount_point=config.get('vault', 'mount_point', fallback="approle"))
+                              mount_point=config.get('vault', 'mount_point'))
     return client
 
 
