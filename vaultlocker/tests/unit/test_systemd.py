@@ -19,7 +19,7 @@ test_systemd
 Tests for `systemd` module.
 """
 
-import mock
+from unittest import mock
 
 from vaultlocker import systemd
 from vaultlocker.tests.unit import base

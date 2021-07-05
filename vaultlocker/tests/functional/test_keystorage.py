@@ -15,7 +15,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-import mock
+from unittest import mock
 
 from vaultlocker import shell
 from vaultlocker.tests.functional import base
@@ -56,8 +56,8 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
         )
         self.assertIsNotNone(stored_data,
                              'Key data missing from vault')
-        self.assertTrue('dmcrypt_key' in stored_data['data'],
-                        'dm-crypt key data is missing')
+        self.assertIn('dmcrypt_key', stored_data['data'],
+                      'dm-crypt key data is missing')
 
     def test_decrypt(self, _luks_open, _luks_format, _systemd,
                      _udevadm_rescan, _udevadm_settle):

@@ -19,8 +19,9 @@ test_vaultlocker
 Tests for `vaultlocker` module.
 """
 
-import mock
 import subprocess
+
+from unittest import mock
 
 from vaultlocker import exceptions
 from vaultlocker import shell
