@@ -39,12 +39,16 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
         args.retry = -1
 
         shell.encrypt(args, self.config)
+        _systemd.service_enabled.return_value = False
         _luks_format.assert_called_once_with(mock.ANY,
                                              '/dev/sdb',
                                              'passed-UUID')
         _luks_open.assert_called_once_with(mock.ANY,
                                            'passed-UUID')
         _systemd.enable.assert_called_once_with(
+            'vaultlocker-decrypt@passed-UUID.service'
+        )
+        _systemd.service_enabled.assert_called_with(
             'vaultlocker-decrypt@passed-UUID.service'
         )
         _udevadm_rescan.assert_called_once_with('/dev/sdb')
@@ -66,8 +70,7 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
         args.uuid = ['passed-UUID']
         args.retry = -1
 
-        self.vault_client.write(shell._get_vault_path('passed-UUID',
-                                                      self.config),
+        self.vault_client.write(shell._get_vault_path('passed-UUID'),
                                 dmcrypt_key='testkey')
 
         shell.decrypt(args, self.config)
