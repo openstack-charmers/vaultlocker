@@ -20,7 +20,7 @@ Tests for `dmcrypt` module.
 """
 
 import base64
-import mock
+from unittest import mock
 
 from vaultlocker import dmcrypt
 from vaultlocker.tests.unit import base
