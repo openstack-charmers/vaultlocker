@@ -33,3 +33,10 @@ class TestSystemD(base.TestCase):
         _subprocess.check_call.assert_called_once_with(
             ['systemctl', 'enable', 'my-service.service']
         )
+
+    @mock.patch.object(systemd, 'os')
+    def test_service_enabled(self, _os):
+        systemd.service_enabled('my-service.service')
+        _os.path.islink.assert_called_once_with(
+            '/etc/systemd/system/multi-user.target.wants/my-service.service'
+        )
