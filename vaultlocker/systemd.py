@@ -13,6 +13,7 @@
 # under the License.
 
 import logging
+import os
 import subprocess
 
 logger = logging.getLogger(__name__)
@@ -26,3 +27,16 @@ def enable(service_name):
     logging.info('Enabling systemd unit for {}'.format(service_name))
     cmd = ['systemctl', 'enable', service_name]
     subprocess.check_call(cmd)
+
+
+def service_enabled(service_name):
+    """Returns if a systemd unit already exists or not
+
+    :param: service_name: Name of the service to check.
+    """
+    logging.info('Check if systemd unit for {} exists.'.format(service_name))
+    return os.path.islink(
+        '/etc/systemd/system/multi-user.target.wants/{}'.format(
+            service_name
+        )
+    )
