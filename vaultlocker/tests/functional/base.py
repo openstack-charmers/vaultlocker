@@ -100,7 +100,8 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
                 'role_id': self.role_id,
                 'secret_id': self.secret_id,
                 'backend': self.vault_backend,
-                'mount_point': self.mount_point
+                'mount_point': self.mount_point,
+                'kv_version': '1'
             }
         }
         self.config = mock.MagicMock()
@@ -110,5 +111,7 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
     def tearDown(self):
         super(VaultlockerFuncBaseTestCase, self).tearDown()
         if self.vault_client:
-            self.vault_client.disable_secret_backend(self.vault_backend)
-            self.vault_client.delete_policy(self.vault_policy)
+            self.vault_client.sys.disable_secrets_engine(
+                path=self.vault_backend)
+            self.vault_client.sys.delete_policy(name=self.vault_policy)
+            self.vault_client.sys.disable_auth_method(path=self.mount_point)
