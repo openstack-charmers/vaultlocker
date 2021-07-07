@@ -125,6 +125,8 @@ def _encrypt_block_device(args, client, config):
         logger.error('Vault access to path {}'
                      'failed with error: {}'.format(vault_path, read_error))
         raise exceptions.VaultReadError(vault_path, read_error)
+    else:
+        stored_data = { 'dmcrypt_key': '' }
 
     if not key == stored_data['dmcrypt_key']:
         raise exceptions.VaultKeyMismatch(vault_path)
