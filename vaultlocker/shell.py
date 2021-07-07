@@ -191,7 +191,7 @@ def _decrypt_block_device(args, client, config):
     elif config.get('vault', 'kv_version') == '1':
         stored_data = client.secrets.kv.v1.read_secret(
             vault_path,
-            ount_point=config.get('vault', 'backend')
+            mount_point=config.get('vault', 'backend')
         )
 
     if stored_data is None:
