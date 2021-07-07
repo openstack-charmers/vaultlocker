@@ -37,9 +37,9 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
         args.uuid = 'passed-UUID'
         args.block_device = ['/dev/sdb']
         args.retry = -1
+        _systemd.service_enabled.return_value = False
 
         shell.encrypt(args, self.config)
-        _systemd.service_enabled.return_value = False
         _luks_format.assert_called_once_with(mock.ANY,
                                              '/dev/sdb',
                                              'passed-UUID')
