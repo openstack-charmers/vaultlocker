@@ -41,6 +41,7 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
 
         self.vault_addr = os.environ.get('PIFPAF_VAULT_ADDR')
         self.root_token = os.environ.get('PIFPAF_ROOT_TOKEN')
+        self.mount_point = 'approle'
 
         self.test_uuid = str(uuid.uuid4())
         self.vault_backend = 'vaultlocker-test-{}'.format(self.test_uuid)
@@ -60,7 +61,7 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
         )
 
         try:
-            self.vault_client.enable_auth_backend('approle')
+            self.vault_client.enable_auth_backend(self.mount_point)
         except hvac.exceptions.InvalidRequest:
             pass
 
@@ -76,17 +77,21 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
             policies=[self.vault_policy],
             bind_secret_id='true',
             bound_cidr_list='127.0.0.1/32')
-        self.approle_uuid = self.vault_client.get_role_id(self.vault_approle)
+        self.role_id = self.vault_client.get_role_id(self.vault_approle)
         self.secret_id = self.vault_client.write(
-            'auth/approle/role/{}/secret-id'.format(self.vault_approle)
+            'auth/{}/role/{}/secret-id'.format(
+                                                self.mount_point,
+                                                self.vault_approle
+                                            )
         )['data']['secret_id']
 
         self.test_config = {
             'vault': {
                 'url': self.vault_addr,
-                'approle': self.approle_uuid,
+                'role_id': self.role_id,
                 'secret_id': self.secret_id,
                 'backend': self.vault_backend,
+                'mount_point': self.mount_point
             }
         }
         self.config = mock.MagicMock()
