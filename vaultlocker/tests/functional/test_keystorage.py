@@ -57,7 +57,7 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
         stored_data = self.vault_client.secrets.kv.v1 \
                           .read_secret(
                               shell._get_vault_path('passed-UUID'),
-                              mount_point=self.mount_point
+                              mount_point=self.vault_backend
                           )
 
         self.assertIsNotNone(stored_data,
@@ -76,7 +76,7 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
             .create_or_update_secret(
                 shell._get_vault_path('passed-UUID'),
                 secret=dict(dmcrypt_key='testkey'),
-                mount_point=self.mount_point
+                mount_point=self.vault_backend
             )
 
         shell.decrypt(args, self.config)
