@@ -79,10 +79,11 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
             bound_cidr_list='127.0.0.1/32')
         self.role_id = self.vault_client.get_role_id(self.vault_approle)
         self.secret_id = self.vault_client.write(
-            'auth/{}/role/{}/secret-id'.format(
-                                                self.mount_point,
-                                                self.vault_approle
-                                            )
+            'auth/{}/role/{}/secret-id'
+            .format(
+                self.mount_point,
+                self.vault_approle
+            )
         )['data']['secret_id']
 
         self.test_config = {

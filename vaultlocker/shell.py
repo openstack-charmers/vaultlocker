@@ -193,6 +193,8 @@ def _decrypt_block_device(args, client, config):
             vault_path,
             mount_point=config.get('vault', 'backend')
         )
+    else:
+        stored_data = None
 
     if stored_data is None:
         raise ValueError('Unable to locate key for {}'.format(block_uuid))
