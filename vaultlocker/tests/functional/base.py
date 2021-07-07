@@ -62,7 +62,7 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
 
         try:
             self.vault_client.sys.enable_auth_method(
-                method_type = 'approle',
+                method_type='approle',
                 path=self.mount_point
             )
         except hvac.exceptions.InvalidRequest:
