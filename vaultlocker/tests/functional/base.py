@@ -114,4 +114,3 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
             self.vault_client.sys.disable_secrets_engine(
                 path=self.vault_backend)
             self.vault_client.sys.delete_policy(name=self.vault_policy)
-            self.vault_client.sys.disable_auth_method(path=self.mount_point)
