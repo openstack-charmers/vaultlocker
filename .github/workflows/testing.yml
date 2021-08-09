@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  run_tests_vault_1_1:
+  run_tests_vault:
     strategy:
       max-parallel: 3
       matrix:
@@ -13,46 +13,13 @@ jobs:
           - '3.6'
           - '3.7'
           - '3.8'
+        vault_versions:
+          - '1.7.3'
+          - '1.1.5'
     runs-on: ubuntu-latest
     services:
       vault:
-        image: vault:1.1.5
-        env:
-          VAULT_DEV_ROOT_TOKEN_ID: "testing"
-        ports:
-          - 8200:8200
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python_versions }}
-      - run: |
-          curl -v -H "x-vault-token: testing" "http://localhost:8200/v1/auth/token/lookup-self"
-      - name: "install requirements"
-        run: |
-          pip install -r requirements.txt -c https://git.openstack.org/cgit/openstack/requirements/plain/upper-constraints.txt
-          pip install -r test-requirements.txt -c https://git.openstack.org/cgit/openstack/requirements/plain/upper-constraints.txt
-      - name: "flake8 run"
-        run: |
-          flake8
-      - name: "run unit tests"
-        run: |
-          stestr run "^vaultlocker.tests.unit.*"
-      - name: "run functional tests"
-        run: |
-          stestr run "^vaultlocker.tests.functional.*"
-  run_tests_vault_1_7:
-    strategy:
-      max-parallel: 3
-      matrix:
-        python_versions:
-          - '3.6'
-          - '3.7'
-          - '3.8'
-    runs-on: ubuntu-latest
-    services:
-      vault:
-        image: vault:1.7.3
+        image: vault:${{ matrix.vault_versions }}
         env:
           VAULT_DEV_ROOT_TOKEN_ID: "testing"
         ports:
