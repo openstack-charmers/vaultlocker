@@ -38,7 +38,17 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
         args.block_device = ['/dev/sdb']
         args.retry = -1
 
+        def mock_path_exists_side_effect(arg):
+            if arg in ['/usr/lib/systemd/system/vaultlocker-decrypt@.service',
+                       '/etc/systemd/system/vaultlocker-decrypt@.service']:
+                return True
+            else:
+                return False
+
+        mock_pathexists = mock.patch('os.path.exists').start()
+        mock_pathexists.side_effect = mock_path_exists_side_effect
         shell.encrypt(args, self.config)
+
         _luks_format.assert_called_once_with(mock.ANY,
                                              '/dev/sdb',
                                              'passed-UUID')
