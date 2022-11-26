@@ -42,7 +42,11 @@ def _vault_client(config):
         url=config.get('vault', 'url'),
         verify=config.get('vault', 'ca_bundle', fallback=True)
     )
-    client.auth_approle(config.get('vault', 'approle'),
+    if hasattr(client, 'auth_approle')
+        client.auth_approle(config.get('vault', 'approle'),
+                        secret_id=config.get('vault', 'secret_id'))
+    else
+        client.auth.approle.login(config.get('vault', 'approle'),
                         secret_id=config.get('vault', 'secret_id'))
     return client
 
