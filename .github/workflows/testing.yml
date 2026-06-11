@@ -9,17 +9,38 @@ jobs:
     strategy:
       max-parallel: 3
       matrix:
-        python_versions:
-          - '3.6'
-          - '3.7'
+        include:
+          - python_version: '3.8'
+            os: "ubuntu-20.04"
+            openstack_constraints: 'https://opendev.org/openstack/requirements/raw/tag/ussuri-eol/upper-constraints.txt'
+          - python_version: '3.10'
+            os: "ubuntu-22.04"
+            openstack_constraints: 'https://opendev.org/openstack/requirements/raw/tag/yoga-eom/upper-constraints.txt'
+          - python_version: '3.12'
+            os: "ubuntu-24.04"
+            openstack_constraints: 'https://opendev.org/openstack/requirements/raw/branch/stable/2024.1/upper-constraints.txt'
+          - python_version: '3.14'
+            os: "ubuntu-26.04"
+            openstack_constraints: 'https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt'
+        python_version:
           - '3.8'
-        vault_versions:
-          - '1.7.3'
-          - '1.1.5'
-    runs-on: ubuntu-latest
+          - '3.10'
+          - '3.12'
+          - '3.14'
+        vault_version:
+          # k8s based vault
+          - '2.0'
+          - '1.19'
+          - '1.18'
+          - '1.17'
+          - '1.16'
+          - '1.15'
+          # charmed openstack's vault
+          - '1.8'
+    runs-on: ${{ matrix.os }}
     services:
       vault:
-        image: vault:${{ matrix.vault_versions }}
+        image: hashicorp/vault:${{ matrix.vault_version }}
         env:
           VAULT_DEV_ROOT_TOKEN_ID: "testing"
         ports:
@@ -31,8 +52,8 @@ jobs:
           python-version: ${{ matrix.python_versions }}
       - name: "install requirements"
         run: |
-          pip install -r requirements.txt -c https://git.openstack.org/cgit/openstack/requirements/plain/upper-constraints.txt
-          pip install -r test-requirements.txt -c https://git.openstack.org/cgit/openstack/requirements/plain/upper-constraints.txt
+          pip install -r requirements.txt -c ${{ matrix.openstack_constraints }}
+          pip install -r test-requirements.txt -c ${{ matrix.openstack_constraints }}
       - name: "flake8 run"
         run: |
           flake8
