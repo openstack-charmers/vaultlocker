@@ -1,0 +1,7 @@
+# Dependency versions available in resolute.
+
+-r requirements.txt
+
+pbr==7.0.3
+hvac==2.3.0
+tenacity==9.1.2
