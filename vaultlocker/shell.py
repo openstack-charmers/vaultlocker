@@ -20,7 +20,7 @@ import socket
 import tenacity
 import uuid
 
-from six.moves import configparser
+import configparser
 import subprocess
 from vaultlocker import dmcrypt
 from vaultlocker import exceptions
@@ -42,8 +42,10 @@ def _vault_client(config):
         url=config.get('vault', 'url'),
         verify=config.get('vault', 'ca_bundle', fallback=True)
     )
-    client.auth_approle(config.get('vault', 'approle'),
-                        secret_id=config.get('vault', 'secret_id'))
+    client.auth.approle.login(
+        role_id=config.get('vault', 'approle'),
+        secret_id=config.get('vault', 'secret_id')
+    )
     return client
 
 
