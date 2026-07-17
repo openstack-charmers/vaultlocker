@@ -13,22 +13,24 @@
 # under the License.
 
 import argparse
-import hvac
+import configparser
 import logging
 import os
+import platform
 import socket
-import tenacity
+import subprocess
 import uuid
 
-import configparser
-import subprocess
+import hvac
+import tenacity
+
 from vaultlocker import dmcrypt
 from vaultlocker import exceptions
 from vaultlocker import systemd
+from vaultlocker import vault
 
 logger = logging.getLogger(__name__)
 
-RUN_VAULTLOCKER = '/run/vaultlocker'
 DEFAULT_CONF_FILE = '/etc/vaultlocker/vaultlocker.conf'
 
 
@@ -49,16 +51,94 @@ def _vault_client(config):
     return client
 
 
-def _get_vault_path(device_uuid, config):
-    """Generate full vault path for a given block device UUID
+def _get_kv_version(config):
+    """Return the configured Vault KV version.
 
-    :param: device_uuid: String of the device UUID
-    :param: config: configparser object of vaultlocker config
-    :returns: str: Path to vault resource for device
+    :param config: configparser object of vaultlocker config
+    :returns: str: KV version ('1' or '2')
+    :raises ValueError: If the configured value is not '1' or '2'.
     """
-    return '{}/{}/{}'.format(config.get('vault', 'backend'),
-                             socket.gethostname(),
-                             device_uuid)
+    version = config.get('vault', 'kv_version', fallback=vault.KV_VERSION_1)
+    if version not in (vault.KV_VERSION_1, vault.KV_VERSION_2):
+        raise ValueError(
+            "Invalid kv_version '{}' in vaultlocker config; "
+            "must be '{}' or '{}'".format(
+                version, vault.KV_VERSION_1, vault.KV_VERSION_2
+            )
+        )
+    return version
+
+
+def get_hostname(config):
+    """Determine the hostname to use in Vault paths.
+
+    :param config: configparser object of vaultlocker config
+    :returns: str: hostname to use
+    :raises RuntimeError: if no hostname could be determined
+    """
+    configured = config.get('DEFAULT', 'hostname', fallback=None)
+    if configured:
+        return configured
+
+    node = platform.node()
+    if node:
+        return node
+
+    try:
+        return socket.gethostname()
+    except OSError as hostname_error:
+        raise RuntimeError(
+            'Unable to determine hostname: {}'.format(hostname_error)
+        )
+
+
+def _vault_mount_point(config):
+    """Return the configured Vault secrets-engine mount.
+
+    :param config: configparser object of vaultlocker config
+    :returns: Vault secrets-engine mount point
+    """
+    return config.get('vault', 'backend')
+
+
+def _vault_secret_path(device_uuid, config):
+    """Return the secret path relative to the Vault mount.
+
+    :param device_uuid: String of the device UUID
+    :param config: configparser object of vaultlocker config
+    :returns: Path ``<hostname>/<uuid>`` form
+    """
+    return '{}/{}'.format(
+        get_hostname(config),
+        device_uuid,
+    )
+
+
+def _get_vault_path(device_uuid, config):
+    """Return the complete Vault path.
+
+    :param device_uuid: String of the device UUID
+    :param config: configparser object of vaultlocker config
+    :returns: Path in ``<mount>/<hostname>/<uuid>`` form.
+    """
+    return '{}/{}'.format(
+        _vault_mount_point(config),
+        _vault_secret_path(device_uuid, config),
+    )
+
+
+def _vault_store(client, config):
+    """Create store for the configured Vault KV mount.
+
+    :param client: Authenticated Vault client.
+    :param config: Parsed vaultlocker configuration.
+    :returns: Storage configured with the mount and KV version.
+    """
+    return vault.KVStore.get_store(
+        client=client,
+        mount_point=_vault_mount_point(config),
+        kv_version=_get_kv_version(config),
+    )
 
 
 def _encrypt_block_device(args, client, config):
@@ -73,26 +153,45 @@ def _encrypt_block_device(args, client, config):
     block_device = args.block_device[0]
     key = dmcrypt.generate_key()
     block_uuid = str(uuid.uuid4()) if not args.uuid else args.uuid
-    vault_path = _get_vault_path(block_uuid, config)
+
+    path = _vault_secret_path(block_uuid, config)
+    vault_path = '{}/{}'.format(
+        _vault_mount_point(config),
+        path,
+    )
+    store = _vault_store(client, config)
 
     # NOTE: store and validate key before trying to encrypt disk
     try:
-        client.write(vault_path,
-                     dmcrypt_key=key)
+        store.write(
+            path,
+            {'dmcrypt_key': key},
+        )
     except hvac.exceptions.VaultError as write_error:
         logger.error(
-            'Vault write to path {}. Failed with error: {}'.format(
-                vault_path, write_error))
-        raise exceptions.VaultWriteError(vault_path, write_error)
+            'Vault write to path %s failed with error: %s',
+            vault_path,
+            write_error,
+        )
+        raise exceptions.VaultWriteError(
+            vault_path,
+            write_error,
+        )
 
     try:
-        stored_data = client.read(vault_path)
+        stored_data = store.read(path)
     except hvac.exceptions.VaultError as read_error:
-        logger.error('Vault access to path {}'
-                     'failed with error: {}'.format(vault_path, read_error))
-        raise exceptions.VaultReadError(vault_path, read_error)
+        logger.error(
+            'Vault access to path %s failed with error: %s',
+            vault_path,
+            read_error,
+        )
+        raise exceptions.VaultReadError(
+            vault_path,
+            read_error,
+        )
 
-    if not key == stored_data['data']['dmcrypt_key']:
+    if not key == stored_data['dmcrypt_key']:
         raise exceptions.VaultKeyMismatch(vault_path)
 
     # All function calls within try/catch raise a CalledProcessError
@@ -107,14 +206,15 @@ def _encrypt_block_device(args, client, config):
         dmcrypt.luks_open(key, block_uuid)
     except subprocess.CalledProcessError as luks_error:
         logger.error(
-            'LUKS formatting {} failed with error code: {}\n'
-            'LUKS output: {}'.format(
-                block_device,
-                luks_error.returncode,
-                luks_error.output))
+            'LUKS formatting %s failed with error code: %s\n'
+            'LUKS output: %s',
+            block_device,
+            luks_error.returncode,
+            luks_error.output,
+        )
 
         try:
-            client.delete(vault_path)
+            store.delete(path)
         except hvac.exceptions.VaultError as del_error:
             raise exceptions.VaultDeleteError(vault_path, del_error)
 
@@ -126,7 +226,7 @@ def _encrypt_block_device(args, client, config):
 def _decrypt_block_device(args, client, config):
     """Open a LUKS/dm-crypt encrypted block device
 
-    The devices dm-crypt key is retrieved from Vault
+    The device's dm-crypt key is retrieved from Vault
 
     :param: args: argparser generated cli arguments
     :param: client: hvac.Client for Vault access
@@ -135,16 +235,23 @@ def _decrypt_block_device(args, client, config):
     block_uuid = args.uuid[0]
 
     if _device_exists(block_uuid):
-        logger.info('Skipping setup of {} because '
-                    'it already exists.'.format(block_uuid))
+        logger.info(
+            'Skipping setup of %s because it already exists.',
+            block_uuid,
+        )
         return
 
-    vault_path = _get_vault_path(block_uuid, config)
+    path = _vault_secret_path(block_uuid, config)
+    store = _vault_store(client, config)
 
-    stored_data = client.read(vault_path)
-    if stored_data is None:
-        raise ValueError('Unable to locate key for {}'.format(block_uuid))
-    key = stored_data['data']['dmcrypt_key']
+    try:
+        stored_data = store.read(path)
+    except hvac.exceptions.InvalidPath:
+        raise ValueError(
+            'Unable to locate key for {}'.format(block_uuid)
+        )
+
+    key = stored_data['dmcrypt_key']
 
     dmcrypt.luks_open(key, block_uuid)
 
@@ -153,7 +260,7 @@ def _device_exists(block_uuid):
     """Checks if the device already exists."""
     handle = 'crypt-{}'.format(block_uuid)
     path = "/dev/mapper/{}".format(handle)
-    logger.info('Checking if {} exists.'.format(path))
+    logger.info('Checking if %s exists.', path)
     return os.path.exists(path)
 
 
