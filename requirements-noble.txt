@@ -1,0 +1,7 @@
+# Dependency versions available in noble.
+
+-r requirements.txt
+
+pbr==5.11.1
+hvac==0.11.2
+tenacity==8.2.3

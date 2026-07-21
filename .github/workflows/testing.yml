@@ -9,30 +9,43 @@ jobs:
     strategy:
       max-parallel: 3
       matrix:
-        python_versions:
-          - '3.6'
-          - '3.7'
-          - '3.8'
+        requirements:
+          - noble
+          - resolute
+          - latest
         vault_versions:
-          - '1.7.3'
-          - '1.1.5'
+          - '1.8'
+          - '1.18'
+          - '2.0'
+        include:
+          - requirements: noble
+            python_version: '3.12'
+          - requirements: resolute
+            python_version: '3.14'
+          - requirements: latest
+            python_version: '3.14'
     runs-on: ubuntu-latest
     services:
       vault:
-        image: vault:${{ matrix.vault_versions }}
+        image: hashicorp/vault:${{ matrix.vault_versions }}
         env:
           VAULT_DEV_ROOT_TOKEN_ID: "testing"
         ports:
           - 8200:8200
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python_versions }}
+          python-version: ${{ matrix.python_version }}
       - name: "install requirements"
         run: |
-          pip install -r requirements.txt -c https://git.openstack.org/cgit/openstack/requirements/plain/upper-constraints.txt
-          pip install -r test-requirements.txt -c https://git.openstack.org/cgit/openstack/requirements/plain/upper-constraints.txt
+          if [ "${{ matrix.requirements }}" = "latest" ]; then
+            pip install -r requirements.txt
+          else
+            pip install -r requirements-${{ matrix.requirements }}.txt
+          fi
+          pip install -r test-requirements.txt
+          pip install .
       - name: "flake8 run"
         run: |
           flake8
@@ -40,5 +53,8 @@ jobs:
         run: |
           stestr run "^vaultlocker.tests.unit.*"
       - name: "run functional tests"
+        env:
+          PIFPAF_VAULT_ADDR: "http://127.0.0.1:8200"
+          PIFPAF_ROOT_TOKEN: "testing"
         run: |
           stestr run "^vaultlocker.tests.functional.*"

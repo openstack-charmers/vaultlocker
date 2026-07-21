@@ -45,6 +45,19 @@ class TestVaultlocker(base.TestCase):
             return self._test_config.get(k)
         self.config.get.side_effect = side_effect
 
+    @mock.patch.object(shell.hvac, 'Client')
+    def test_vault_client_uses_approle_login(self, _client):
+        client = _client.return_value
+
+        result = shell._vault_client(self.config)
+
+        client.auth.approle.login.assert_called_once_with(
+            role_id=self._test_config['approle'],
+            secret_id=self._test_config['secret_id'],
+        )
+        client.auth_approle.assert_not_called()
+        self.assertIs(result, client)
+
     @mock.patch.object(shell, 'systemd')
     @mock.patch.object(shell, 'dmcrypt')
     @mock.patch.object(shell, '_get_vault_path')

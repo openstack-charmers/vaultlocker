@@ -21,7 +21,6 @@ from unittest import mock
 import uuid
 
 from oslotest import base
-from testtools import testcase
 
 
 TEST_POLICY = '''
@@ -48,37 +47,40 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
         self.vault_approle = 'vaultlocker-approle-{}'.format(self.test_uuid)
 
         if not self.vault_addr or not self.root_token:
-            raise testcase.TestSkipped('Vault not running')
+            self.skipTest('Vault not running')
 
         self.vault_client = hvac.Client(url=self.vault_addr,
                                         token=self.root_token)
 
-        self.vault_client.enable_secret_backend(
+        self.vault_client.sys.enable_secrets_engine(
             backend_type='kv',
-            description='vault test backend',
-            mount_point=self.vault_backend
+            path=self.vault_backend,
+            description='vaultlocker test backend',
+            options={'version': '1'},
         )
 
         try:
-            self.vault_client.enable_auth_backend('approle')
+            self.vault_client.sys.enable_auth_method('approle')
         except hvac.exceptions.InvalidRequest:
             pass
 
-        self.vault_client.set_policy(
+        self.vault_client.sys.create_or_update_policy(
             name=self.vault_policy,
-            rules=TEST_POLICY.format(backend=self.vault_backend)
+            policy=TEST_POLICY.format(backend=self.vault_backend),
         )
 
-        self.vault_client.create_role(
-            self.vault_approle,
+        self.vault_client.auth.approle.create_or_update_approle(
+            role_name=self.vault_approle,
             token_ttl='60s',
             token_max_ttl='60s',
-            policies=[self.vault_policy],
-            bind_secret_id='true',
-            bound_cidr_list='127.0.0.1/32')
-        self.approle_uuid = self.vault_client.get_role_id(self.vault_approle)
-        self.secret_id = self.vault_client.write(
-            'auth/approle/role/{}/secret-id'.format(self.vault_approle)
+            token_policies=[self.vault_policy],
+            bind_secret_id=True,
+        )
+        self.approle_uuid = self.vault_client.auth.approle.read_role_id(
+            role_name=self.vault_approle,
+        )['data']['role_id']
+        self.secret_id = self.vault_client.auth.approle.generate_secret_id(
+            role_name=self.vault_approle,
         )['data']['secret_id']
 
         self.test_config = {
@@ -91,10 +93,14 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
         }
         self.config = mock.MagicMock()
         self.config.get.side_effect = \
-            lambda s, k, **kwargs: self.test_config.get(s).get(k)
+            lambda s, k, **kwargs: self.test_config.get(s, {}).get(
+                k, kwargs.get('fallback')
+            )
 
     def tearDown(self):
         super(VaultlockerFuncBaseTestCase, self).tearDown()
         if self.vault_client:
-            self.vault_client.disable_secret_backend(self.vault_backend)
-            self.vault_client.delete_policy(self.vault_policy)
+            self.vault_client.sys.disable_secrets_engine(
+                path=self.vault_backend,
+            )
+            self.vault_client.sys.delete_policy(name=self.vault_policy)
