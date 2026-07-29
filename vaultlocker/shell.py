@@ -370,7 +370,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
 
     try:
-        if (len( vars(args) ) <= 2):
+        if (len(vars(args)) <= 2):
             parser.print_help()
         else:
             args.func(args, get_config())
