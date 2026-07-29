@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -37,7 +36,7 @@ class TestDMCrypt(base.TestCase):
              '--uuid', 'test-uuid',
              '--key-file', '-',
              'luksFormat', '/dev/sdb'],
-            input='mykey'.encode('UTF-8')
+            input=b'mykey'
         )
 
     @mock.patch.object(dmcrypt, 'subprocess')
@@ -49,7 +48,7 @@ class TestDMCrypt(base.TestCase):
              '--key-file', '-',
              'open', 'UUID=test-uuid', 'crypt-test-uuid',
              '--type', 'luks'],
-            input='mykey'.encode('UTF-8')
+            input=b'mykey'
         )
 
     @mock.patch.object(dmcrypt, 'os')

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -23,6 +22,6 @@ def enable(service_name):
 
     :param: service_name: Name of the service to enable.
     """
-    logging.info('Enabling systemd unit for {}'.format(service_name))
+    logging.info('Enabling systemd unit for %s', service_name)
     cmd = ['systemctl', 'enable', service_name]
     subprocess.check_call(cmd)

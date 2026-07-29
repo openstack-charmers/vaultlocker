@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -52,8 +51,8 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'vaultlocker Release Notes'
-copyright = u'2017, OpenStack Developers'
+project = 'vaultlocker Release Notes'
+copyright = '2017, OpenStack Developers'
 
 # openstackdocstheme options
 repository_name = 'openstack/vaultlocker'
@@ -212,8 +211,8 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     ('index', 'vaultlockerReleaseNotes.tex',
-     u'vaultlocker  Release Notes Documentation',
-     u'OpenStack Foundation', 'manual'),
+     'vaultlocker  Release Notes Documentation',
+     'OpenStack Foundation', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -243,8 +242,8 @@ latex_documents = [
 # (source start file, name, description, authors, manual section).
 man_pages = [
     ('index', 'vaultlockerrereleasenotes',
-     u'vaultlocker  Release Notes Documentation',
-     [u'OpenStack Foundation'], 1)
+     'vaultlocker  Release Notes Documentation',
+     ['OpenStack Foundation'], 1)
 ]
 
 # If true, show URL addresses after external links.
@@ -258,8 +257,8 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
     ('index', 'vaultlocker ReleaseNotes',
-     u'vaultlocker Release Notes Documentation',
-     u'OpenStack Foundation', 'vaultlockerReleaseNotes',
+     'vaultlocker Release Notes Documentation',
+     'OpenStack Foundation', 'vaultlockerReleaseNotes',
      'One line description of project.',
      'Miscellaneous'),
 ]

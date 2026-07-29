@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Copyright 2010-2011 OpenStack Foundation
 # Copyright (c) 2013 Hewlett-Packard Development Company, L.P.
@@ -15,13 +14,12 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-import hvac
 import os
-from unittest import mock
 import uuid
+from unittest import mock
 
+import hvac
 from oslotest import base
-
 
 TEST_POLICY = '''
 path "{backend}/*" {{
@@ -35,16 +33,16 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
     """Test case base class for all functional tests."""
 
     def setUp(self):
-        super(VaultlockerFuncBaseTestCase, self).setUp()
+        super().setUp()
         self.vault_client = None
 
         self.vault_addr = os.environ.get('PIFPAF_VAULT_ADDR')
         self.root_token = os.environ.get('PIFPAF_ROOT_TOKEN')
 
         self.test_uuid = str(uuid.uuid4())
-        self.vault_backend = 'vaultlocker-test-{}'.format(self.test_uuid)
-        self.vault_policy = 'vaultlocker-policy-{}'.format(self.test_uuid)
-        self.vault_approle = 'vaultlocker-approle-{}'.format(self.test_uuid)
+        self.vault_backend = f'vaultlocker-test-{self.test_uuid}'
+        self.vault_policy = f'vaultlocker-policy-{self.test_uuid}'
+        self.vault_approle = f'vaultlocker-approle-{self.test_uuid}'
 
         if not self.vault_addr or not self.root_token:
             self.skipTest('Vault not running')
@@ -98,7 +96,7 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
             )
 
     def tearDown(self):
-        super(VaultlockerFuncBaseTestCase, self).tearDown()
+        super().tearDown()
         if self.vault_client:
             self.vault_client.sys.disable_secrets_engine(
                 path=self.vault_backend,

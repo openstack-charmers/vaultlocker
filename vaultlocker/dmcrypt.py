@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -43,7 +42,7 @@ def luks_format(key, device, uuid):
     :param: device: full path to block device to use.
     :param: uuid: uuid to use for encrypted block device.
     """
-    logger.info('LUKS formatting {} using UUID:{}'.format(device, uuid))
+    logger.info('LUKS formatting %s using UUID:%s', device, uuid)
     command = [
         'cryptsetup',
         '--batch-mode',
@@ -68,15 +67,15 @@ def luks_open(key, uuid):
     :param: uuid: uuid to use for encrypted block device.
     :returns: str. dm-crypt mapping
     """
-    logger.info('LUKS opening {}'.format(uuid))
-    handle = 'crypt-{}'.format(uuid)
+    logger.info('LUKS opening %s', uuid)
+    handle = f'crypt-{uuid}'
     command = [
         'cryptsetup',
         '--batch-mode',
         '--key-file',
         '-',
         'open',
-        'UUID={}'.format(uuid),
+        f'UUID={uuid}',
         handle,
         '--type',
         'luks',
@@ -94,11 +93,11 @@ def udevadm_rescan(device):
 
     :param: device: full path to block device to use.
     """
-    logger.info('udevadm trigger block/add for {}'.format(device))
+    logger.info('udevadm trigger block/add for %s', device)
     command = [
         'udevadm',
         'trigger',
-        '--name-match={}'.format(device),
+        f'--name-match={device}',
         '--action=add'
     ]
     subprocess.check_output(command)
@@ -112,10 +111,10 @@ def udevadm_settle(uuid):
 
     :param: uuid: uuid to use for encrypted block device.
     """
-    logger.info('udevadm settle /dev/disk/by-uuid/{}'.format(uuid))
+    logger.info('udevadm settle /dev/disk/by-uuid/%s', uuid)
     command = [
         'udevadm',
         'settle',
-        '--exit-if-exists=/dev/disk/by-uuid/{}'.format(uuid),
+        f'--exit-if-exists=/dev/disk/by-uuid/{uuid}',
     ]
     subprocess.check_output(command)

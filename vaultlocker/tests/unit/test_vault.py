@@ -21,14 +21,14 @@ from unittest import mock
 
 import hvac
 
-from vaultlocker.tests.unit import base
 from vaultlocker import vault
+from vaultlocker.tests.unit import base
 
 
 class TestKVStoreV1(base.TestCase):
 
     def setUp(self):
-        super(TestKVStoreV1, self).setUp()
+        super().setUp()
         self.client = mock.MagicMock()
         self.store = vault.KVStoreV1(self.client, 'vaultlocker-v1')
 
@@ -83,7 +83,7 @@ class TestKVStoreV1(base.TestCase):
 class TestKVStoreV2(base.TestCase):
 
     def setUp(self):
-        super(TestKVStoreV2, self).setUp()
+        super().setUp()
         self.client = mock.MagicMock()
         self.store = vault.KVStoreV2(self.client, 'vaultlocker-v2')
 

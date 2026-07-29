@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -21,13 +20,11 @@ Tests for `vaultlocker` module.
 
 import configparser
 import subprocess
-
 from unittest import mock
 
 import hvac
 
-from vaultlocker import exceptions
-from vaultlocker import shell
+from vaultlocker import exceptions, shell
 from vaultlocker.tests.unit import base
 
 
@@ -41,7 +38,7 @@ class TestVaultlocker(base.TestCase):
     }
 
     def __init__(self, *args, **kwds):
-        super(TestVaultlocker, self).__init__(*args, **kwds)
+        super().__init__(*args, **kwds)
         self.config = mock.MagicMock()
 
         def side_effect(_, key, **kwargs):

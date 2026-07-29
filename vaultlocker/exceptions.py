@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -28,34 +27,29 @@ class VaultlockerException(Exception):
 class VaultWriteError(VaultlockerException):
 
     def __init__(self, path, error):
-        super().__init__("Can't write to vault at path {}, error: {}".format(
-            path, error))
+        super().__init__(f"Can't write to vault at path {path}, error: {error}")
 
 
 class VaultReadError(VaultlockerException):
 
     def __init__(self, path, error):
-        super().__init__("Can't read vault at path {}, error: {}".format(
-            path, error))
+        super().__init__(f"Can't read vault at path {path}, error: {error}")
 
 
 class VaultDeleteError(VaultlockerException):
 
     def __init__(self, path, error):
-        super().__init__("Can't delete vault key at path {}, error: {}".format(
-            path, error))
+        super().__init__(f"Can't delete vault key at path {path}, error: {error}")
 
 
 class VaultKeyMismatch(VaultlockerException):
 
     def __init__(self, path):
         super().__init__(
-            "Vault key at path {} does not match with generated key".format(
-                path))
+            f"Vault key at path {path} does not match with generated key")
 
 
 class LUKSFailure(VaultlockerException):
 
     def __init__(self, block_device, error):
-        super().__init__("Can't operate on {}. Error: {}".format(
-            block_device, error))
+        super().__init__(f"Can't operate on {block_device}. Error: {error}")

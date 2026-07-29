@@ -121,6 +121,6 @@ class KVStore:
         store_class = cls._registry.get(kv_version)
         if store_class is None:
             raise ValueError(
-                "Unsupported kv_version '{}'".format(kv_version)
+                f"Unsupported kv_version '{kv_version}'"
             )
         return store_class(client, mount_point)
