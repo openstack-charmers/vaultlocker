@@ -14,12 +14,21 @@ vaultlocker provides a way to store and retrieve dm-crypt encryption
 keys in Vault, automatically retrieving keys and opening LUKS dm-crypt
 devices on boot.
 
-vaultlocker is configured using `/etc/vaultlocker/vaultlocker.conf`::
+vaultlocker is configured using `/etc/vaultlocker/vaultlocker.conf`.
+
+If ``kv_version`` is omitted, vaultlocker uses Vault's KV version 1
+secrets engine. To use a KV version 2 mount, set ``kv_version = 2`` in
+the ``[vault]`` section::
+
+    [DEFAULT]
+    hostname = host-1
 
     [vault]
     url = https://vault.internal:8200
     approle = 4a1b84d2-7bb2-4c07-9804-04d1683ac925
+    secret_id = 9428ad25-7b4a-442f-8f20-f23be0575146
     backend = secret
+    kv_version = 2
 
 vaultlocker defaults to using a backend with the name `secret`.
 
