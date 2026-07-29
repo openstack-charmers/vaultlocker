@@ -263,7 +263,10 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
 
     try:
-        args.func(args, get_config(args.config))
+        if (len( vars(args) ) <= 2):
+            parser.print_help()
+        else:
+            args.func(args, get_config())
     except Exception as e:
         raise SystemExit(
             '{prog}: {msg}'.format(
