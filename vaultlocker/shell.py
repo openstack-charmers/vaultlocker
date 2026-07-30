@@ -23,7 +23,10 @@ import uuid
 import hvac
 import tenacity
 
-from vaultlocker import dmcrypt, exceptions, systemd, vault
+from vaultlocker import dmcrypt
+from vaultlocker import exceptions
+from vaultlocker import systemd
+from vaultlocker import vault
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +115,9 @@ def _get_vault_path(device_uuid, config):
     :param config: configparser object of vaultlocker config
     :returns: Path in ``<mount>/<hostname>/<uuid>`` form.
     """
-    return f'{_vault_mount_point(config)}/{_vault_secret_path(device_uuid, config)}'
+    mount = _vault_mount_point(config)
+    secret = _vault_secret_path(device_uuid, config)
+    return f'{mount}/{secret}'
 
 
 def _vault_store(client, config):

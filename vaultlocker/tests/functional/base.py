@@ -15,8 +15,8 @@
 # under the License.
 
 import os
-import uuid
 from unittest import mock
+import uuid
 
 import hvac
 from oslotest import base

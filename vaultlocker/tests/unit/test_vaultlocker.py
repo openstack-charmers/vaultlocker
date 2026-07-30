@@ -24,7 +24,8 @@ from unittest import mock
 
 import hvac
 
-from vaultlocker import exceptions, shell
+from vaultlocker import exceptions
+from vaultlocker import shell
 from vaultlocker.tests.unit import base
 
 

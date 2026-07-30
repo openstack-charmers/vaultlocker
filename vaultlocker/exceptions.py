@@ -27,7 +27,8 @@ class VaultlockerException(Exception):
 class VaultWriteError(VaultlockerException):
 
     def __init__(self, path, error):
-        super().__init__(f"Can't write to vault at path {path}, error: {error}")
+        super().__init__(
+            f"Can't write to vault at path {path}, error: {error}")
 
 
 class VaultReadError(VaultlockerException):
@@ -39,7 +40,8 @@ class VaultReadError(VaultlockerException):
 class VaultDeleteError(VaultlockerException):
 
     def __init__(self, path, error):
-        super().__init__(f"Can't delete vault key at path {path}, error: {error}")
+        super().__init__(
+            f"Can't delete vault key at path {path}, error: {error}")
 
 
 class VaultKeyMismatch(VaultlockerException):

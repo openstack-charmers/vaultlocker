@@ -21,8 +21,8 @@ from unittest import mock
 
 import hvac
 
-from vaultlocker import vault
 from vaultlocker.tests.unit import base
+from vaultlocker import vault
 
 
 class TestKVStoreV1(base.TestCase):
