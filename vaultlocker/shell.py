@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -14,7 +15,7 @@
 import argparse
 import configparser
 import logging
-import pathlib
+import os
 import platform
 import socket
 import subprocess
@@ -60,8 +61,10 @@ def _get_kv_version(config):
     version = config.get('vault', 'kv_version', fallback=vault.KV_VERSION_1)
     if version not in (vault.KV_VERSION_1, vault.KV_VERSION_2):
         raise ValueError(
-            f"Invalid kv_version '{version}' in vaultlocker config; "
-            f"must be '{vault.KV_VERSION_1}' or '{vault.KV_VERSION_2}'"
+            "Invalid kv_version '{}' in vaultlocker config; "
+            "must be '{}' or '{}'".format(
+                version, vault.KV_VERSION_1, vault.KV_VERSION_2
+            )
         )
     return version
 
@@ -85,7 +88,7 @@ def get_hostname(config):
         return socket.gethostname()
     except OSError as hostname_error:
         raise RuntimeError(
-            f'Unable to determine hostname: {hostname_error}'
+            'Unable to determine hostname: {}'.format(hostname_error)
         )
 
 
@@ -105,7 +108,10 @@ def _vault_secret_path(device_uuid, config):
     :param config: configparser object of vaultlocker config
     :returns: Path ``<hostname>/<uuid>`` form
     """
-    return f'{get_hostname(config)}/{device_uuid}'
+    return '{}/{}'.format(
+        get_hostname(config),
+        device_uuid,
+    )
 
 
 def _get_vault_path(device_uuid, config):
@@ -115,9 +121,10 @@ def _get_vault_path(device_uuid, config):
     :param config: configparser object of vaultlocker config
     :returns: Path in ``<mount>/<hostname>/<uuid>`` form.
     """
-    mount = _vault_mount_point(config)
-    secret = _vault_secret_path(device_uuid, config)
-    return f'{mount}/{secret}'
+    return '{}/{}'.format(
+        _vault_mount_point(config),
+        _vault_secret_path(device_uuid, config),
+    )
 
 
 def _vault_store(client, config):
@@ -148,7 +155,10 @@ def _encrypt_block_device(args, client, config):
     block_uuid = str(uuid.uuid4()) if not args.uuid else args.uuid
 
     path = _vault_secret_path(block_uuid, config)
-    vault_path = f'{_vault_mount_point(config)}/{path}'
+    vault_path = '{}/{}'.format(
+        _vault_mount_point(config),
+        path,
+    )
     store = _vault_store(client, config)
 
     # NOTE: store and validate key before trying to encrypt disk
@@ -210,7 +220,7 @@ def _encrypt_block_device(args, client, config):
 
         raise exceptions.LUKSFailure(block_device, luks_error.output)
 
-    systemd.enable(f'vaultlocker-decrypt@{block_uuid}.service')
+    systemd.enable('vaultlocker-decrypt@{}.service'.format(block_uuid))
 
 
 def _decrypt_block_device(args, client, config):
@@ -238,7 +248,7 @@ def _decrypt_block_device(args, client, config):
         stored_data = store.read(path)
     except hvac.exceptions.InvalidPath:
         raise ValueError(
-            f'Unable to locate key for {block_uuid}'
+            'Unable to locate key for {}'.format(block_uuid)
         )
 
     key = stored_data['dmcrypt_key']
@@ -248,10 +258,10 @@ def _decrypt_block_device(args, client, config):
 
 def _device_exists(block_uuid):
     """Checks if the device already exists."""
-    handle = f'crypt-{block_uuid}'
-    path = f"/dev/mapper/{handle}"
+    handle = 'crypt-{}'.format(block_uuid)
+    path = "/dev/mapper/{}".format(handle)
     logger.info('Checking if %s exists.', path)
-    return pathlib.Path(path).exists()
+    return os.path.exists(path)
 
 
 def _do_it_with_persistence(func, args, config):
@@ -304,11 +314,11 @@ def get_config(config_path):
     :returns: configparser. Parsed configuration options
     """
     config = configparser.ConfigParser()
-    if pathlib.Path(config_path).exists():
+    if os.path.exists(config_path):
         config.read(config_path)
     else:
         raise FileNotFoundError(
-            f"Configuration file not found: {config_path}"
+            "Configuration file not found: {}".format(config_path)
         )
     return config
 
@@ -360,11 +370,14 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
 
     try:
-        if (len(vars(args)) <= 2):
+        if (len( vars(args) ) <= 2):
             parser.print_help()
         else:
             args.func(args, get_config())
     except Exception as e:
         raise SystemExit(
-            f'{args.prog}: {e}'
+            '{prog}: {msg}'.format(
+                prog=args.prog,
+                msg=e,
+            )
         )

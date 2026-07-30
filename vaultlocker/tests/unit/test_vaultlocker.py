@@ -20,6 +20,7 @@ Tests for `vaultlocker` module.
 
 import configparser
 import subprocess
+
 from unittest import mock
 
 import hvac
