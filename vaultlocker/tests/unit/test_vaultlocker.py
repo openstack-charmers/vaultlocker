@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -40,7 +41,7 @@ class TestVaultlocker(base.TestCase):
     }
 
     def __init__(self, *args, **kwds):
-        super().__init__(*args, **kwds)
+        super(TestVaultlocker, self).__init__(*args, **kwds)
         self.config = mock.MagicMock()
 
         def side_effect(_, key, **kwargs):
