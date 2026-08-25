@@ -14,11 +14,14 @@
 
 import argparse
 import configparser
+import functools
+import getpass
 import logging
 import os
 import platform
 import socket
 import subprocess
+import sys
 import uuid
 
 import hvac
@@ -141,27 +144,13 @@ def _vault_store(client, config):
     )
 
 
-def _encrypt_block_device(args, client, config):
-    """Encrypt and open a block device
-
-    Stores the dm-crypt key direct in vault
-
-    :param: args: argparser generated cli arguments
-    :param: client: hvac.Client for Vault access
-    :param: config: configparser object of vaultlocker config
-    """
-    block_device = args.block_device[0]
-    key = dmcrypt.generate_key()
-    block_uuid = str(uuid.uuid4()) if not args.uuid else args.uuid
-
-    path = _vault_secret_path(block_uuid, config)
+def _store_and_validate_key(store, path, key):
+    """Store a dm-crypt key in Vault and validate if it was stored."""
     vault_path = '{}/{}'.format(
-        _vault_mount_point(config),
+        store.mount_point,
         path,
     )
-    store = _vault_store(client, config)
 
-    # NOTE: store and validate key before trying to encrypt disk
     try:
         store.write(
             path,
@@ -191,8 +180,146 @@ def _encrypt_block_device(args, client, config):
             read_error,
         )
 
-    if not key == stored_data['dmcrypt_key']:
+    if key != stored_data['dmcrypt_key']:
         raise exceptions.VaultKeyMismatch(vault_path)
+
+
+def _read_existing_key(key_file):
+    """Read an existing LUKS key from a file or standard input.
+
+    Prompt without echo when standard input is an interactive terminal.
+
+    :param: key_file: file path, or None to use standard input.
+    :returns: bytes containing the existing key.
+    """
+    if key_file:
+        with open(key_file, 'rb') as key_source:
+            key = key_source.read()
+    elif sys.stdin.isatty():
+        key = getpass.getpass(
+            'Existing LUKS passphrase: '
+        ).encode('utf-8')
+    else:
+        key = sys.stdin.buffer.read()
+
+    if not key:
+        raise ValueError('Existing LUKS key cannot be empty')
+
+    return key
+
+
+def _get_or_create_managed_key(store, path):
+    """Return an existing managed key or create one and store it in Vault.
+
+    :param: store: Vault key-value store object.
+    :param: path: path to the managed key in Vault.
+    :returns: managed key as str
+    """
+    try:
+        stored_data = store.read(path)
+    except hvac.exceptions.InvalidPath:
+        key = dmcrypt.generate_key()
+        _store_and_validate_key(store, path, key)
+        return key
+
+    if (
+            not isinstance(stored_data, dict) or
+            not stored_data.get('dmcrypt_key')
+    ):
+        raise ValueError(
+            'Vault secret at {}/{} does not contain dmcrypt_key'.format(
+                store.mount_point,
+                path,
+            )
+        )
+
+    return stored_data['dmcrypt_key']
+
+
+def _enroll_block_device(args, client, config, existing_key):
+    """Add a Vault-managed key to an existing LUKS device.
+
+    :param: args: argparser generated CLI arguments.
+    :param: client: hvac.Client for Vault access.
+    :param: config: configparser object of vaultlocker config.
+    :param: existing_key: existing key used to unlock the device.
+    """
+    block_device = args.block_device[0]
+
+    try:
+        block_uuid = dmcrypt.luks_uuid(block_device)
+
+        if not dmcrypt.luks_test_key(existing_key, block_device):
+            raise ValueError(
+                'Existing key does not unlock {}'.format(block_device)
+            )
+    except subprocess.CalledProcessError as luks_error:
+        raise exceptions.LUKSFailure(
+            block_device,
+            luks_error.output,
+        )
+
+    path = _vault_secret_path(block_uuid, config)
+    store = _vault_store(client, config)
+    key = _get_or_create_managed_key(store, path)
+
+    try:
+        if not dmcrypt.luks_test_key(key, block_device):
+            dmcrypt.luks_add_key(
+                existing_key,
+                key,
+                block_device,
+            )
+
+            if not dmcrypt.luks_test_key(key, block_device):
+                raise exceptions.LUKSFailure(
+                    block_device,
+                    'Vaultlocker managed key unable to unlock the device',
+                )
+
+        if not _device_exists(block_uuid):
+            dmcrypt.luks_open(key, block_uuid)
+
+    except subprocess.CalledProcessError as luks_error:
+        logger.error(
+            'LUKS enrollment for %s failed with error code: %s\n'
+            'LUKS output: %s',
+            block_device,
+            luks_error.returncode,
+            luks_error.output,
+        )
+        raise exceptions.LUKSFailure(
+            block_device,
+            luks_error.output,
+        )
+
+    systemd.enable(
+        'vaultlocker-decrypt@{}.service'.format(block_uuid)
+    )
+
+
+def _encrypt_block_device(args, client, config):
+    """Encrypt and open a block device
+
+    Stores the dm-crypt key direct in vault
+
+    :param: args: argparser generated cli arguments
+    :param: client: hvac.Client for Vault access
+    :param: config: configparser object of vaultlocker config
+    """
+    block_device = args.block_device[0]
+    key = dmcrypt.generate_key()
+    block_uuid = str(uuid.uuid4()) if not args.uuid else args.uuid
+
+    path = _vault_secret_path(block_uuid, config)
+    vault_path = '{}/{}'.format(
+        _vault_mount_point(config),
+        path,
+    )
+    store = _vault_store(client, config)
+
+    # NOTE: store and validate key before trying to encrypt disk
+    _store_and_validate_key(store, path, key)
 
     # All function calls within try/catch raise a CalledProcessError
     # if return code is non-zero
@@ -298,6 +425,28 @@ def encrypt(args, config):
     _do_it_with_persistence(_encrypt_block_device, args, config)
 
 
+def enroll(args, config):
+    """Enroll and open handler.
+
+    :param: args: argparser generated CLI arguments.
+    :param: config: configparser object of vaultlocker config.
+    """
+    # Read the existing key once because stdin cannot be reread during retries,
+    # then bind it to the enrollment operation.
+    existing_key = _read_existing_key(args.existing_key_file)
+
+    enroll_operation = functools.partial(
+        _enroll_block_device,
+        existing_key=existing_key,
+    )
+
+    _do_it_with_persistence(
+        enroll_operation,
+        args,
+        config,
+    )
+
+
 def decrypt(args, config):
     """Decrypt and open handler
 
@@ -356,6 +505,25 @@ def main():
                                 help="Full path to block device to encrypt")
     encrypt_parser.set_defaults(func=encrypt)
 
+    enroll_parser = subparsers.add_parser(
+        'enroll',
+        help='Add a Vault-managed key to an existing LUKS device'
+    )
+    enroll_parser.add_argument(
+        '--existing-key-file',
+        help=(
+            "Existing LUKS key file. If omitted, read from stdin or prompt "
+            "when run interactively"
+        )
+    )
+    enroll_parser.add_argument(
+        'block_device',
+        metavar='BLOCK_DEVICE',
+        nargs=1,
+        help='Full path to the existing LUKS device'
+    )
+    enroll_parser.set_defaults(func=enroll)
+
     decrypt_parser = subparsers.add_parser(
         'decrypt',
         help='Decrypt a block device retrieving its key from Vault'
@@ -373,7 +541,7 @@ def main():
         if (len(vars(args)) <= 2):
             parser.print_help()
         else:
-            args.func(args, get_config())
+            args.func(args, get_config(args.config))
     except Exception as e:
         raise SystemExit(
             '{prog}: {msg}'.format(
