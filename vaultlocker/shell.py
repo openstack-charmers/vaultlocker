@@ -373,7 +373,7 @@ def main():
         if (len(vars(args)) <= 2):
             parser.print_help()
         else:
-            args.func(args, get_config())
+            args.func(args, get_config(args.config))
     except Exception as e:
         raise SystemExit(
             '{prog}: {msg}'.format(
