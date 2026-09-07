@@ -376,6 +376,249 @@ class TestVaultlocker(base.TestCase):
             str(error.exception),
         )
 
+    @mock.patch.object(shell, 'sys')
+    def test_read_existing_key_from_piped_stdin(self, _sys):
+        _sys.stdin.isatty.return_value = False
+        _sys.stdin.buffer.read.return_value = b'existing-key'
+
+        self.assertEqual(
+            b'existing-key',
+            shell._read_existing_key(None),
+        )
+
+        _sys.stdin.buffer.read.assert_called_once_with()
+
+    @mock.patch.object(shell.getpass, 'getpass')
+    @mock.patch.object(shell, 'sys')
+    def test_read_existing_key_prompts_for_terminal_stdin(
+            self, _sys, _getpass):
+        _sys.stdin.isatty.return_value = True
+        _getpass.return_value = 'some'
+
+        self.assertEqual(
+            b'some',
+            shell._read_existing_key(None),
+        )
+
+        _getpass.assert_called_once_with(
+            'Existing LUKS passphrase: ',
+        )
+
+    @mock.patch('builtins.open', new_callable=mock.mock_open,
+                read_data=b'existing-key')
+    def test_read_existing_key_from_file(self, _open):
+        self.assertEqual(
+            b'existing-key',
+            shell._read_existing_key('/path/to/key'),
+        )
+
+        _open.assert_called_once_with('/path/to/key', 'rb')
+
+    @mock.patch.object(shell.dmcrypt, 'generate_key')
+    def test_get_or_create_managed_key_reuses_existing(
+            self, _generate_key):
+        store = mock.MagicMock()
+        store.read.return_value = {
+            'dmcrypt_key': 'managed-key',
+        }
+
+        self.assertEqual(
+            'managed-key',
+            shell._get_or_create_managed_key(
+                store,
+                'host/test-uuid',
+            ),
+        )
+
+        store.read.assert_called_once_with('host/test-uuid')
+        _generate_key.assert_not_called()
+
+    @mock.patch.object(shell, '_store_and_validate_key')
+    @mock.patch.object(shell.dmcrypt, 'generate_key')
+    def test_get_or_create_managed_key_creates_missing(
+            self, _generate_key, _store_and_validate_key):
+        store = mock.MagicMock()
+        store.read.side_effect = hvac.exceptions.InvalidPath(
+            'missing',
+        )
+        _generate_key.return_value = 'managed-key'
+
+        self.assertEqual(
+            'managed-key',
+            shell._get_or_create_managed_key(
+                store,
+                'host/test-uuid',
+            ),
+        )
+
+        _generate_key.assert_called_once_with()
+        _store_and_validate_key.assert_called_once_with(
+            store,
+            'host/test-uuid',
+            'managed-key',
+        )
+
+    @mock.patch.object(shell.dmcrypt, 'generate_key')
+    def test_get_or_create_managed_key_error(
+            self, _generate_key):
+        store = mock.MagicMock()
+        store.read.side_effect = hvac.exceptions.Forbidden(
+            'denied',
+        )
+
+        with self.assertRaises(hvac.exceptions.Forbidden):
+            shell._get_or_create_managed_key(
+                store,
+                'host/test-uuid',
+            )
+
+        _generate_key.assert_not_called()
+
+    @mock.patch.object(shell, '_device_exists', return_value=False)
+    @mock.patch.object(shell, '_get_or_create_managed_key')
+    @mock.patch.object(shell, 'get_hostname')
+    @mock.patch.object(shell, '_vault_store')
+    @mock.patch.object(shell, 'systemd')
+    @mock.patch.object(shell, 'dmcrypt')
+    def test_enroll_block_device(
+            self, _dmcrypt, _systemd, _vault_store,
+            _get_hostname, _get_managed_key, _device_exists):
+        _get_hostname.return_value = 'host'
+        _get_managed_key.return_value = 'managed-key'
+
+        _dmcrypt.luks_uuid.return_value = 'test-uuid'
+        _dmcrypt.luks_test_key.side_effect = [
+            True,
+            False,
+            True,
+        ]
+
+        args = mock.MagicMock()
+        args.block_device = ['/dev/sdb']
+        client = mock.MagicMock()
+
+        shell._enroll_block_device(
+            args,
+            client,
+            self.config,
+            b'existing-key',
+        )
+
+        _dmcrypt.luks_uuid.assert_called_once_with('/dev/sdb')
+        _dmcrypt.luks_test_key.assert_has_calls([
+            mock.call(b'existing-key', '/dev/sdb'),
+            mock.call('managed-key', '/dev/sdb'),
+            mock.call('managed-key', '/dev/sdb'),
+        ])
+        _get_managed_key.assert_called_once_with(
+            _vault_store.return_value,
+            'host/test-uuid',
+        )
+        _dmcrypt.luks_add_key.assert_called_once_with(
+            b'existing-key',
+            'managed-key',
+            '/dev/sdb',
+        )
+        _dmcrypt.luks_open.assert_called_once_with(
+            'managed-key',
+            'test-uuid',
+        )
+        _systemd.enable.assert_called_once_with(
+            'vaultlocker-decrypt@test-uuid.service',
+        )
+
+    @mock.patch.object(shell, '_device_exists', return_value=True)
+    @mock.patch.object(shell, '_get_or_create_managed_key')
+    @mock.patch.object(shell, 'get_hostname')
+    @mock.patch.object(shell, '_vault_store')
+    @mock.patch.object(shell, 'systemd')
+    @mock.patch.object(shell, 'dmcrypt')
+    def test_enroll_block_device_already_enrolled(
+            self, _dmcrypt, _systemd, _vault_store,
+            _get_hostname, _get_managed_key, _device_exists):
+        _get_hostname.return_value = 'host'
+        _get_managed_key.return_value = 'managed-key'
+
+        _dmcrypt.luks_uuid.return_value = 'test-uuid'
+        _dmcrypt.luks_test_key.side_effect = [
+            True,
+            True,
+        ]
+
+        args = mock.MagicMock()
+        args.block_device = ['/dev/sdb']
+
+        shell._enroll_block_device(
+            args,
+            mock.MagicMock(),
+            self.config,
+            b'existing-key',
+        )
+
+        _dmcrypt.luks_add_key.assert_not_called()
+        _dmcrypt.luks_open.assert_not_called()
+        _systemd.enable.assert_called_once_with(
+            'vaultlocker-decrypt@test-uuid.service',
+        )
+
+    @mock.patch.object(shell, '_get_or_create_managed_key')
+    @mock.patch.object(shell, '_vault_store')
+    @mock.patch.object(shell, 'systemd')
+    @mock.patch.object(shell, 'dmcrypt')
+    def test_enroll_block_device_rejects_invalid_existing_key(
+            self, _dmcrypt, _systemd, _vault_store,
+            _get_managed_key):
+        _dmcrypt.luks_uuid.return_value = 'test-uuid'
+        _dmcrypt.luks_test_key.return_value = False
+
+        args = mock.MagicMock()
+        args.block_device = ['/dev/sdb']
+
+        with self.assertRaises(ValueError) as error:
+            shell._enroll_block_device(
+                args,
+                mock.MagicMock(),
+                self.config,
+                b'wrong-key',
+            )
+
+        self.assertEqual(
+            'Existing key does not unlock /dev/sdb',
+            str(error.exception),
+        )
+        _vault_store.assert_not_called()
+        _get_managed_key.assert_not_called()
+        _dmcrypt.luks_add_key.assert_not_called()
+        _dmcrypt.luks_open.assert_not_called()
+        _systemd.enable.assert_not_called()
+
+    @mock.patch.object(
+        shell.sys,
+        'argv',
+        [
+            'vaultlocker',
+            'enroll',
+            '/dev/sdb',
+        ],
+    )
+    @mock.patch.object(shell, 'get_config')
+    @mock.patch.object(shell, 'enroll')
+    def test_main_parses_enroll(
+            self, _enroll, _get_config):
+        _get_config.return_value = self.config
+
+        shell.main()
+
+        _get_config.assert_called_once_with(
+            shell.DEFAULT_CONF_FILE,
+        )
+        _enroll.assert_called_once()
+
+        args, config = _enroll.call_args[0]
+        self.assertIsNone(args.existing_key_file)
+        self.assertEqual(['/dev/sdb'], args.block_device)
+        self.assertIs(self.config, config)
+
 
 class TestKVConfiguration(base.TestCase):
 

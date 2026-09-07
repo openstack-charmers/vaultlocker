@@ -20,6 +20,7 @@ Tests for `dmcrypt` module.
 """
 
 import base64
+import subprocess
 from unittest import mock
 
 from vaultlocker import dmcrypt
@@ -40,6 +41,16 @@ class TestDMCrypt(base.TestCase):
             input='mykey'.encode('UTF-8')
         )
 
+    def test_key_bytes_from_string(self):
+        self.assertEqual(
+            dmcrypt._key_bytes("pässphrase"),
+            "pässphrase".encode("utf-8"),
+        )
+
+    def test_key_bytes_from_bytes(self):
+        key = b"passphrase"
+        self.assertEqual(dmcrypt._key_bytes(key), key)
+
     @mock.patch.object(dmcrypt, 'subprocess')
     def test_luks_open(self, _subprocess):
         dmcrypt.luks_open('mykey', 'test-uuid')
@@ -59,6 +70,145 @@ class TestDMCrypt(base.TestCase):
         self.assertEqual(dmcrypt.generate_key(),
                          base64.b64encode(_key).decode('UTF-8'))
         _os.urandom.assert_called_with(dmcrypt.KEY_SIZE / 8)
+
+    @mock.patch.object(dmcrypt, 'subprocess')
+    def test_luks_uuid(self, _subprocess):
+        _subprocess.check_output.return_value = b'test-uuid\n'
+
+        self.assertEqual(
+            dmcrypt.luks_uuid('/dev/sdb'),
+            'test-uuid'
+        )
+        _subprocess.check_output.assert_called_once_with(
+            ['cryptsetup',
+             'luksUUID',
+             '/dev/sdb']
+        )
+
+    @mock.patch.object(dmcrypt.subprocess, 'check_output')
+    def test_luks_uuid_failure(self, _check_output):
+        _check_output.side_effect = subprocess.CalledProcessError(
+            returncode=1,
+            cmd=['cryptsetup']
+        )
+
+        with self.assertRaises(subprocess.CalledProcessError):
+            dmcrypt.luks_uuid('/dev/sdb')
+
+        _check_output.assert_called_once_with(
+            ['cryptsetup',
+             'luksUUID',
+             '/dev/sdb']
+        )
+
+    @mock.patch.object(dmcrypt, 'subprocess')
+    def test_luks_test_key_valid(self, _subprocess):
+        self.assertTrue(
+            dmcrypt.luks_test_key('mykey', '/dev/sdb')
+        )
+        _subprocess.check_output.assert_called_once_with(
+            ['cryptsetup',
+             '--batch-mode',
+             '--key-file', '-',
+             'open',
+             '--test-passphrase',
+             '/dev/sdb'],
+            input=b'mykey'
+        )
+
+    @mock.patch.object(dmcrypt.subprocess, 'check_output')
+    def test_luks_test_key_invalid(self, _check_output):
+        _check_output.side_effect = subprocess.CalledProcessError(
+            returncode=2,
+            cmd=['cryptsetup']
+        )
+
+        self.assertFalse(
+            dmcrypt.luks_test_key('mykey', '/dev/sdb')
+        )
+        _check_output.assert_called_once_with(
+            ['cryptsetup',
+             '--batch-mode',
+             '--key-file', '-',
+             'open',
+             '--test-passphrase',
+             '/dev/sdb'],
+            input=b'mykey'
+        )
+
+    @mock.patch.object(dmcrypt.subprocess, 'check_output')
+    def test_luks_test_key_command_failure(self, _check_output):
+        _check_output.side_effect = subprocess.CalledProcessError(
+            returncode=1,
+            cmd=['cryptsetup']
+        )
+
+        with self.assertRaises(subprocess.CalledProcessError):
+            dmcrypt.luks_test_key('mykey', '/dev/sdb')
+
+        _check_output.assert_called_once_with(
+            ['cryptsetup',
+             '--batch-mode',
+             '--key-file', '-',
+             'open',
+             '--test-passphrase',
+             '/dev/sdb'],
+            input=b'mykey'
+        )
+
+    @mock.patch.object(dmcrypt, 'subprocess')
+    @mock.patch.object(dmcrypt, 'os')
+    def test_luks_add_key(self, _os, _subprocess):
+        _os.memfd_create.return_value = 10
+
+        dmcrypt.luks_add_key(
+            b'existing-key',
+            'new-key',
+            '/dev/sdb'
+        )
+
+        _os.memfd_create.assert_called_once_with(
+            'vaultlocker-existing-key'
+        )
+        _subprocess.check_output.assert_called_once_with(
+            ['cryptsetup',
+             '--batch-mode',
+             '--key-file', '/proc/self/fd/10',
+             '--new-keyfile', '-',
+             'luksAddKey', '/dev/sdb'],
+            input=b'new-key',
+            pass_fds=(10,)
+        )
+        _os.close.assert_called_once_with(10)
+
+    @mock.patch.object(dmcrypt, 'subprocess')
+    @mock.patch.object(dmcrypt, 'os')
+    def test_luks_add_key_failure_closes_fd(
+            self, _os, _subprocess):
+        _os.memfd_create.return_value = 10
+        _subprocess.check_output.side_effect = (
+            subprocess.CalledProcessError(
+                returncode=1,
+                cmd=['cryptsetup']
+            )
+        )
+
+        with self.assertRaises(subprocess.CalledProcessError):
+            dmcrypt.luks_add_key(
+                'existing-key',
+                'new-key',
+                '/dev/sdb'
+            )
+        _subprocess.check_output.assert_called_once_with(
+            ['cryptsetup',
+             '--batch-mode',
+             '--key-file', '/proc/self/fd/10',
+             '--new-keyfile', '-',
+             'luksAddKey', '/dev/sdb'],
+            input=b'new-key',
+            pass_fds=(10,)
+        )
+        _os.close.assert_called_once_with(10)
 
     @mock.patch.object(dmcrypt, 'subprocess')
     def test_udevadm_rescan(self, _subprocess):
