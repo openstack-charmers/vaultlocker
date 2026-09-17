@@ -15,8 +15,25 @@ from typing import Any
 
 import hvac
 
+from vaultlocker import exceptions
+
 KV_VERSION_1 = '1'
 KV_VERSION_2 = '2'
+
+
+def get_cluster_id(client: hvac.Client) -> str:
+    """Return a valid cluster ID from Vault's seal status."""
+    response = client.sys.read_seal_status()
+    if not isinstance(response, dict):
+        raise exceptions.ClusterIdentityError(
+            'Vault seal status is not a JSON object'
+        )
+    cluster_id = response.get('cluster_id')
+    if not isinstance(cluster_id, str) or not cluster_id:
+        raise exceptions.ClusterIdentityError(
+            'Vault seal status has no valid cluster_id'
+        )
+    return cluster_id
 
 
 class KVStoreBase(abc.ABC):

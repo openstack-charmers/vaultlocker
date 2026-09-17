@@ -21,6 +21,7 @@ from unittest import mock
 
 import hvac
 
+from vaultlocker import exceptions
 from vaultlocker.tests.unit import base
 from vaultlocker import vault
 
@@ -181,3 +182,32 @@ class TestKVStoreFactory(base.TestCase):
             )
 
         self.assertIn("Unsupported kv_version '3'", str(error.exception))
+
+
+class TestClusterId(base.TestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.client = mock.MagicMock()
+
+    def test_get_cluster_id(self):
+        self.client.sys.read_seal_status.return_value = {
+            'cluster_id': 'test-cluster-id',
+        }
+
+        self.assertEqual(
+            'test-cluster-id',
+            vault.get_cluster_id(self.client),
+        )
+        self.client.sys.read_seal_status.assert_called_once_with()
+
+    def test_invalid_cluster_id_fails(self):
+        invalid_responses = (
+            {}, {'cluster_id': ''}, {'cluster_id': None},
+            {'cluster_id': 42}, None,
+        )
+        for response in invalid_responses:
+            with self.subTest(response=response):
+                self.client.sys.read_seal_status.return_value = response
+                with self.assertRaises(exceptions.ClusterIdentityError):
+                    vault.get_cluster_id(self.client)

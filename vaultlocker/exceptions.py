@@ -112,3 +112,7 @@ class MapperOpenError(LUKSFailure):
 
 class BootConfigError(LUKSFailure):
     """Registering the boot-time unlock mechanism failed."""
+
+
+class ClusterIdentityError(VaultlockerException):
+    """The Vault cluster identity could not be verified."""
