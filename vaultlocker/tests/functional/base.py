@@ -17,15 +17,28 @@
 
 import hvac
 import os
+import shutil
+import tempfile
 from unittest import mock
 import uuid
 
 from oslotest import base
 
+from vaultlocker import shell
 
-TEST_POLICY = '''
+
+KV1_POLICY = '''
 path "{backend}/*" {{
   capabilities = ["create", "read", "update", "delete", "list"]
+}}
+'''
+
+KV2_POLICY = '''
+path "{backend}/data/*" {{
+  capabilities = ["create", "read", "update", "delete", "list"]
+}}
+path "{backend}/metadata/*" {{
+  capabilities = ["read", "delete", "list"]
 }}
 '''
 
@@ -33,6 +46,9 @@ path "{backend}/*" {{
 class VaultlockerFuncBaseTestCase(base.BaseTestCase):
 
     """Test case base class for all functional tests."""
+
+    #: KV secrets engine version under test.
+    kv_version = '1'
 
     def setUp(self):
         super(VaultlockerFuncBaseTestCase, self).setUp()
@@ -56,7 +72,7 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
             backend_type='kv',
             path=self.vault_backend,
             description='vaultlocker test backend',
-            options={'version': '1'},
+            options={'version': self.kv_version},
         )
 
         try:
@@ -64,9 +80,10 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
         except hvac.exceptions.InvalidRequest:
             pass
 
+        policy = KV2_POLICY if self.kv_version == '2' else KV1_POLICY
         self.vault_client.sys.create_or_update_policy(
             name=self.vault_policy,
-            policy=TEST_POLICY.format(backend=self.vault_backend),
+            policy=policy.format(backend=self.vault_backend),
         )
 
         self.vault_client.auth.approle.create_or_update_approle(
@@ -89,6 +106,7 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
                 'approle': self.approle_uuid,
                 'secret_id': self.secret_id,
                 'backend': self.vault_backend,
+                'kv_version': self.kv_version,
             }
         }
         self.config = mock.MagicMock()
@@ -97,6 +115,10 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
                 k, kwargs.get('fallback')
             )
 
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp_dir, ignore_errors=True)
+        self.config_path = os.path.join(self.temp_dir, 'vaultlocker.conf')
+
     def tearDown(self):
         super(VaultlockerFuncBaseTestCase, self).tearDown()
         if self.vault_client:
@@ -104,3 +126,11 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
                 path=self.vault_backend,
             )
             self.vault_client.sys.delete_policy(name=self.vault_policy)
+
+    def vault_store(self):
+        """Return a KV store configured for this test's backend."""
+        return shell._vault_store(self.vault_client, self.config)
+
+    def secret_path(self, device_uuid):
+        """Return the secret path used for a device UUID."""
+        return shell._vault_secret_path(device_uuid, self.config)
