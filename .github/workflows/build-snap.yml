@@ -1,4 +1,4 @@
-name: vaultlocker snap
+name: vaultlocker snap build and VM tests
 
 on:
   - pull_request
@@ -36,3 +36,76 @@ jobs:
 
       - name: Verify snap help
         run: vaultlocker -h
+
+  test-snap-vm:
+    name: Test snap in VM
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      VAULTLOCKER_TEST_VM: vaultlocker-vm
+      LXD_STORAGE_POOL: default
+      LXD_STORAGE_VOLUME: vaultlocker-scratch
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v7
+
+      - name: Download snap artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: snap
+          path: snap-artifact
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: |
+          pip install -r requirements-noble.txt
+          pip install -r test-requirements.txt
+          pip install .
+
+      - name: Set up LXD
+        uses: canonical/setup-lxd@v1
+
+      - name: Create VM and scratch disk
+        run: |
+          lxc storage volume create "$LXD_STORAGE_POOL" "$LXD_STORAGE_VOLUME" \
+            --type=block size=512MiB
+          lxc launch ubuntu:24.04 "$VAULTLOCKER_TEST_VM" --vm \
+            --config limits.cpu=2 --config limits.memory=4GiB
+          lxc storage volume attach "$LXD_STORAGE_POOL" "$LXD_STORAGE_VOLUME" \
+            "$VAULTLOCKER_TEST_VM"
+          timeout 300 bash -c \
+            'until lxc exec "$VAULTLOCKER_TEST_VM" -- true; do sleep 5; done'
+          lxc exec "$VAULTLOCKER_TEST_VM" -- cloud-init status --wait
+          lxc exec "$VAULTLOCKER_TEST_VM" -- apt-get update
+          lxc exec "$VAULTLOCKER_TEST_VM" -- apt-get install -y \
+            cryptsetup dmsetup curl snapd
+
+          mapfile -t scratch_devices < <(
+            lxc exec "$VAULTLOCKER_TEST_VM" -- lsblk -bndo PATH,TYPE,SIZE |
+              awk '$2 == "disk" && $3 == 536870912 {print $1}'
+          )
+          test "${#scratch_devices[@]}" -eq 1
+          lxc exec "$VAULTLOCKER_TEST_VM" -- test -b "${scratch_devices[0]}"
+          echo "VAULTLOCKER_TEST_DEVICE=${scratch_devices[0]}" >> "$GITHUB_ENV"
+
+      - name: Run snap VM functional tests
+        run: |
+          snap_path="$(find "$GITHUB_WORKSPACE/snap-artifact" -maxdepth 1 \
+            -name '*.snap' -print -quit)"
+          test -n "$snap_path"
+          VAULTLOCKER_SNAP_PATH="$snap_path" \
+            python -c 'from vaultlocker.tests.functional.snap.base import snap_tests_enabled; assert snap_tests_enabled()'
+          VAULTLOCKER_SNAP_PATH="$snap_path" \
+            stestr run --serial '^vaultlocker.tests.functional.snap.*'
+
+      - name: Clean up VM
+        if: always()
+        run: |
+          lxc delete "$VAULTLOCKER_TEST_VM" --force || true
+          lxc storage volume delete "$LXD_STORAGE_POOL" \
+            "$LXD_STORAGE_VOLUME" || true
