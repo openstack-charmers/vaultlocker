@@ -22,7 +22,9 @@ Tests for `vaultlocker` module.
 import configparser
 import io
 import json
+import os
 import subprocess
+import tempfile
 
 from unittest import mock
 
@@ -75,17 +77,27 @@ class TestVaultlocker(base.TestCase):
                     shell.get_config(config_path)
 
     @mock.patch.object(shell.hvac, 'Client')
-    def test_vault_client_uses_approle_login(self, _client):
+    def test_vault_client_is_not_authenticated(self, _client):
         client = _client.return_value
 
         result = shell._vault_client(self.config)
+
+        _client.assert_called_once_with(
+            url=self._test_config['url'],
+            verify=True,
+        )
+        client.auth.approle.login.assert_not_called()
+        self.assertIs(result, client)
+
+    def test_login_to_vault_uses_approle(self):
+        client = mock.MagicMock()
+
+        shell._login_to_vault(client, self.config)
 
         client.auth.approle.login.assert_called_once_with(
             role_id=self._test_config['approle'],
             secret_id=self._test_config['secret_id'],
         )
-        client.auth_approle.assert_not_called()
-        self.assertIs(result, client)
 
     @mock.patch.object(shell.vault, 'KVStore')
     def test_vault_store_uses_configured_mount_and_version(self, _kv_store):
@@ -393,9 +405,11 @@ class TestVaultlocker(base.TestCase):
         self.assertEqual(['/dev/sdb'], args.block_device)
         self.assertIs(self.config, config)
 
+    @mock.patch.object(shell, '_login_to_vault')
+    @mock.patch.object(shell, '_verify_cluster_identity')
     @mock.patch.object(shell, '_vault_client')
     def test_do_it_with_persistence_returns_result(
-            self, _vault_client):
+            self, _vault_client, _verify_cluster_identity, _login_to_vault):
         args = mock.MagicMock()
         args.retry = 0
         func = mock.MagicMock(return_value={'luks_uuid': 'test-uuid'})
@@ -405,22 +419,46 @@ class TestVaultlocker(base.TestCase):
         )
 
         self.assertEqual({'luks_uuid': 'test-uuid'}, result)
-        func.assert_called_once_with(args, _vault_client.return_value,
-                                     self.config)
+        client = _vault_client.return_value
+        _login_to_vault.assert_called_once_with(client, self.config)
+        _verify_cluster_identity.assert_called_once_with(client, args.config)
+        func.assert_called_once_with(args, client, self.config)
 
+    @mock.patch.object(shell, '_login_to_vault')
+    @mock.patch.object(shell, '_verify_cluster_identity')
+    @mock.patch.object(shell, '_vault_client')
+    def test_identity_is_checked_after_login(
+            self, _vault_client, _verify_cluster_identity, _login_to_vault):
+        calls = []
+        _verify_cluster_identity.side_effect = (
+            lambda *_args: calls.append('identity')
+        )
+        _login_to_vault.side_effect = lambda *_args: calls.append('login')
+        operation = mock.MagicMock(
+            side_effect=lambda *_args: calls.append('operation'),
+        )
+        args = mock.MagicMock(retry=0)
+
+        shell._do_it_with_persistence(operation, args, self.config)
+
+        self.assertEqual(['login', 'identity', 'operation'], calls)
+
+    @mock.patch.object(shell, '_login_to_vault')
+    @mock.patch.object(shell, '_verify_cluster_identity')
     @mock.patch.object(shell, '_vault_client')
     def test_do_it_with_persistence_wraps_vault_connection_error(
-            self, _vault_client):
-        _vault_client.side_effect = hvac.exceptions.VaultDown('down')
+            self, _vault_client, _verify_cluster_identity, _login_to_vault):
+        _login_to_vault.side_effect = hvac.exceptions.VaultDown('down')
 
         args = mock.MagicMock()
         args.retry = 0
-        func = mock.MagicMock()
+        operation = mock.MagicMock()
 
         with self.assertRaises(exceptions.VaultConnectionError):
-            shell._do_it_with_persistence(func, args, self.config)
+            shell._do_it_with_persistence(operation, args, self.config)
 
-        func.assert_not_called()
+        _verify_cluster_identity.assert_not_called()
+        operation.assert_not_called()
 
     @mock.patch.object(shell.sys, 'argv',
                        ['vaultlocker', 'encrypt', '/dev/sdb'])
@@ -606,54 +644,72 @@ class TestVaultlocker(base.TestCase):
 class TestTenacityRetryBoundary(base.TestCase):
     """Tests which Vault failures are retried."""
 
+    @mock.patch.object(shell, '_login_to_vault')
+    @mock.patch.object(shell, '_verify_cluster_identity')
     @mock.patch.object(shell, '_vault_client')
     def test_vault_down_is_retried_within_the_bound(
-            self, _vault_client):
-        _vault_client.side_effect = [
+            self, _vault_client, _verify_cluster_identity, _login_to_vault):
+        _login_to_vault.side_effect = [
             hvac.exceptions.VaultDown('sealed'),
-            mock.MagicMock(),
+            None,
         ]
 
         args = mock.MagicMock()
         args.retry = 3
-        func = mock.MagicMock(return_value={'luks_uuid': 'test-uuid'})
+        operation = mock.MagicMock(
+            return_value={'luks_uuid': 'test-uuid'},
+        )
 
-        result = shell._do_it_with_persistence(func, args, mock.MagicMock())
+        result = shell._do_it_with_persistence(
+            operation, args, mock.MagicMock(),
+        )
 
         self.assertEqual({'luks_uuid': 'test-uuid'}, result)
         self.assertEqual(2, _vault_client.call_count)
-        func.assert_called_once()
+        _verify_cluster_identity.assert_called_once_with(
+            _vault_client.return_value, args.config,
+        )
+        self.assertEqual(2, _login_to_vault.call_count)
+        operation.assert_called_once()
 
+    @mock.patch.object(shell, '_login_to_vault')
+    @mock.patch.object(shell, '_verify_cluster_identity')
     @mock.patch.object(shell, '_vault_client')
-    def test_credential_failure_is_not_retried(self, _vault_client):
-        _vault_client.side_effect = hvac.exceptions.Forbidden('bad creds')
+    def test_credential_failure_is_not_retried(
+            self, _vault_client, _verify_cluster_identity, _login_to_vault):
+        _login_to_vault.side_effect = hvac.exceptions.Forbidden('bad creds')
 
         args = mock.MagicMock()
-        # A long window shows that credential errors still fail immediately.
         args.retry = 10
-        func = mock.MagicMock()
+        operation = mock.MagicMock()
 
         with self.assertRaises(exceptions.VaultConnectionError):
-            shell._do_it_with_persistence(func, args, mock.MagicMock())
+            shell._do_it_with_persistence(
+                operation, args, mock.MagicMock(),
+            )
 
-        self.assertEqual(1, _vault_client.call_count)
-        func.assert_not_called()
+        self.assertEqual(1, _login_to_vault.call_count)
+        operation.assert_not_called()
 
+    @mock.patch.object(shell, '_login_to_vault')
+    @mock.patch.object(shell, '_verify_cluster_identity')
     @mock.patch.object(shell, '_vault_client')
     def test_unbounded_retry_still_fails_fast_on_credentials(
-            self, _vault_client):
-        """The default retry setting makes one attempt."""
-        _vault_client.side_effect = hvac.exceptions.Forbidden('bad creds')
+            self, _vault_client, _verify_cluster_identity, _login_to_vault):
+        """The default retry setting attempts login once."""
+        _login_to_vault.side_effect = hvac.exceptions.Forbidden('bad creds')
 
         args = mock.MagicMock()
         args.retry = -1
-        func = mock.MagicMock()
+        operation = mock.MagicMock()
 
         with self.assertRaises(exceptions.VaultConnectionError):
-            shell._do_it_with_persistence(func, args, mock.MagicMock())
+            shell._do_it_with_persistence(
+                operation, args, mock.MagicMock(),
+            )
 
-        self.assertEqual(1, _vault_client.call_count)
-        func.assert_not_called()
+        self.assertEqual(1, _login_to_vault.call_count)
+        operation.assert_not_called()
 
 
 class TestStoreAndValidateKey(base.TestCase):
@@ -1348,13 +1404,14 @@ class TestEncryptHandler(base.TestCase):
         )
 
     @mock.patch.object(shell, '_encrypt_block_device')
+    @mock.patch.object(shell, '_verify_cluster_identity')
     @mock.patch.object(shell, '_vault_client')
     @mock.patch.object(shell.dmcrypt, 'generate_key',
                        return_value='generated-key')
     @mock.patch.object(shell.uuid, 'uuid4', return_value='generated-uuid')
     def test_new_uuid_and_key_are_stable_across_internal_retries(
             self, _uuid4, _generate_key, _vault_client,
-            _encrypt_impl):
+            _verify_cluster_identity, _encrypt_impl):
         """Retries keep the same UUID and key."""
         _vault_client.return_value = mock.MagicMock()
         _encrypt_impl.side_effect = [
@@ -1812,6 +1869,7 @@ class TestHandlersAndConfig(base.TestCase):
 
         _do.assert_called_once_with(
             shell._decrypt_block_device, args, config,
+            fail_on_cluster_mismatch=False,
         )
         self.assertIsNone(result)
 
@@ -1883,6 +1941,211 @@ kv_version = 3
                 'builtins.open', mock.mock_open(read_data=contents)):
             with self.assertRaises(exceptions.ConfigurationError):
                 shell.get_config('/path/to/conf')
+
+
+class TestClusterIdentity(base.TestCase):
+    """Tests Vault cluster identity pinning."""
+
+    def setUp(self):
+        super().setUp()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.config_path = os.path.join(
+            self.temp_dir.name, 'vaultlocker.conf',
+        )
+        self.pin_path = '{}.cluster-id'.format(self.config_path)
+
+    def _write_pin(self, value):
+        with open(self.pin_path, 'w', encoding='utf-8') as sidecar:
+            sidecar.write(value)
+
+    @mock.patch.object(shell.vault, 'get_cluster_id', return_value='cluster-a')
+    def test_first_use_creates_pin(self, _get_cluster_id):
+        shell._verify_cluster_identity(mock.MagicMock(), self.config_path)
+
+        with open(self.pin_path, 'r', encoding='utf-8') as sidecar:
+            self.assertEqual('cluster-a', sidecar.read())
+
+    @mock.patch.object(shell.vault, 'get_cluster_id', return_value='cluster-a')
+    def test_matching_pin_succeeds(self, _get_cluster_id):
+        self._write_pin('cluster-a')
+
+        with mock.patch.object(shell.tempfile, 'mkstemp') as _mkstemp:
+            shell._verify_cluster_identity(
+                mock.MagicMock(), self.config_path,
+            )
+
+        _mkstemp.assert_not_called()
+
+    @mock.patch.object(shell.vault, 'get_cluster_id', return_value='cluster-a')
+    def test_concurrent_pin_is_not_replaced(self, _get_cluster_id):
+        real_link = os.link
+
+        def create_competing_pin(source, destination):
+            with open(destination, 'x', encoding='utf-8') as sidecar:
+                sidecar.write('cluster-b')
+            return real_link(source, destination)
+
+        with mock.patch.object(
+                shell.os, 'link', side_effect=create_competing_pin):
+            with self.assertRaises(exceptions.ClusterIdentityMismatchError):
+                shell._verify_cluster_identity(
+                    mock.MagicMock(), self.config_path,
+                )
+
+        with open(self.pin_path, 'r', encoding='utf-8') as sidecar:
+            self.assertEqual('cluster-b', sidecar.read())
+        self.assertEqual([os.path.basename(self.pin_path)],
+                         os.listdir(self.temp_dir.name))
+
+    @mock.patch.object(shell.vault, 'get_cluster_id', return_value='cluster-b')
+    def test_mismatching_pin_fails(self, _get_cluster_id):
+        self._write_pin('cluster-a')
+
+        with self.assertRaises(exceptions.ClusterIdentityMismatchError):
+            shell._verify_cluster_identity(
+                mock.MagicMock(), self.config_path,
+            )
+
+        with open(self.pin_path, 'r', encoding='utf-8') as sidecar:
+            self.assertEqual('cluster-a', sidecar.read())
+
+    @mock.patch.object(shell.vault, 'get_cluster_id', return_value='cluster-a')
+    def test_empty_pin_fails(self, _get_cluster_id):
+        self._write_pin('')
+
+        with self.assertRaises(exceptions.ClusterIdentityError):
+            shell._verify_cluster_identity(
+                mock.MagicMock(), self.config_path,
+            )
+
+    def test_file_errors_are_controlled(self):
+        with mock.patch('builtins.open', side_effect=OSError('unavailable')):
+            with self.assertRaises(exceptions.ClusterIdentityError):
+                shell._read_cluster_pin(self.pin_path)
+
+        with mock.patch.object(
+                shell.tempfile, 'mkstemp',
+                side_effect=OSError('unavailable')):
+            with self.assertRaises(exceptions.ClusterIdentityError):
+                shell._create_cluster_pin(self.pin_path, 'cluster-a')
+
+        with mock.patch.object(
+                shell.os, 'link', side_effect=OSError('unavailable')):
+            with self.assertRaises(exceptions.ClusterIdentityError):
+                shell._create_cluster_pin(self.pin_path, 'cluster-a')
+        self.assertEqual([], os.listdir(self.temp_dir.name))
+
+    def test_two_config_paths_pin_independently(self):
+        second_config = os.path.join(self.temp_dir.name, 'second.conf')
+        with mock.patch.object(
+                shell.vault, 'get_cluster_id',
+                side_effect=['cluster-a', 'cluster-b']):
+            shell._verify_cluster_identity(
+                mock.MagicMock(), self.config_path,
+            )
+            shell._verify_cluster_identity(
+                mock.MagicMock(), second_config,
+            )
+
+        with open(self.pin_path, 'r', encoding='utf-8') as first_pin:
+            self.assertEqual('cluster-a', first_pin.read())
+        with open(
+                '{}.cluster-id'.format(second_config),
+                'r', encoding='utf-8',
+        ) as second_pin:
+            self.assertEqual('cluster-b', second_pin.read())
+
+    @mock.patch.object(shell, '_login_to_vault')
+    @mock.patch.object(shell, '_vault_client')
+    def test_verification_failure_runs_no_operation(
+            self, _vault_client, _login_to_vault):
+        self._write_pin('cluster-a')
+        operation = mock.MagicMock()
+        args = mock.MagicMock(retry=0, config=self.config_path)
+
+        with mock.patch.object(
+                shell.vault, 'get_cluster_id', return_value='cluster-b'):
+            with self.assertRaises(
+                    exceptions.ClusterIdentityMismatchError):
+                shell._do_it_with_persistence(
+                    operation, args, mock.MagicMock(),
+                )
+
+        _login_to_vault.assert_called_once_with(
+            _vault_client.return_value, mock.ANY,
+        )
+        operation.assert_not_called()
+        with open(self.pin_path, 'r', encoding='utf-8') as sidecar:
+            self.assertEqual('cluster-a', sidecar.read())
+
+    @mock.patch.object(shell, '_decrypt_block_device',
+                       return_value='unlocked')
+    @mock.patch.object(shell, '_verify_cluster_identity')
+    @mock.patch.object(shell, '_login_to_vault')
+    @mock.patch.object(shell, '_vault_client')
+    def test_decrypt_warns_and_runs_after_cluster_mismatch(
+            self, _vault_client, _login_to_vault,
+            _verify_cluster_identity, _decrypt_block_device):
+        _verify_cluster_identity.side_effect = (
+            exceptions.ClusterIdentityMismatchError('cluster-a', 'cluster-b')
+        )
+        args = mock.MagicMock(retry=0, config=self.config_path)
+        config = mock.MagicMock()
+
+        with self.assertLogs(shell.logger, level='WARNING') as logged:
+            result = shell.decrypt(args, config)
+
+        self.assertEqual('unlocked', result)
+        self.assertIn('Vault cluster identity mismatch', logged.output[0])
+        client = _vault_client.return_value
+        _login_to_vault.assert_called_once_with(client, config)
+        _verify_cluster_identity.assert_called_once_with(
+            client, self.config_path,
+        )
+        _decrypt_block_device.assert_called_once_with(args, client, config)
+
+    def test_encrypt_and_enroll_stop_after_cluster_mismatch(self):
+        mismatch = exceptions.ClusterIdentityMismatchError(
+            'cluster-a', 'cluster-b',
+        )
+        args = mock.MagicMock(
+            retry=0, config=self.config_path, uuid='test-uuid',
+            existing_key_file=None,
+        )
+        config = mock.MagicMock()
+
+        with mock.patch.object(shell, '_vault_client'), \
+                mock.patch.object(shell, '_login_to_vault'), \
+                mock.patch.object(shell, '_verify_cluster_identity',
+                                  side_effect=mismatch), \
+                mock.patch.object(shell, '_encrypt_block_device') as encrypt, \
+                mock.patch.object(shell, '_enroll_block_device') as enroll:
+            for handler in (shell.encrypt, shell.enroll):
+                with self.subTest(handler=handler.__name__):
+                    with self.assertRaises(
+                            exceptions.ClusterIdentityMismatchError):
+                        handler(args, config)
+
+        encrypt.assert_not_called()
+        enroll.assert_not_called()
+
+    @mock.patch.object(shell, '_decrypt_block_device')
+    @mock.patch.object(shell, '_verify_cluster_identity')
+    @mock.patch.object(shell, '_login_to_vault')
+    @mock.patch.object(shell, '_vault_client')
+    def test_decrypt_still_fails_on_invalid_cluster_pin(
+            self, _vault_client, _login_to_vault,
+            _verify_cluster_identity, _decrypt_block_device):
+        _verify_cluster_identity.side_effect = (
+            exceptions.ClusterIdentityError('invalid pin')
+        )
+        args = mock.MagicMock(retry=0, config=self.config_path)
+
+        with self.assertRaises(exceptions.ClusterIdentityError):
+            shell.decrypt(args, mock.MagicMock())
+
+        _decrypt_block_device.assert_not_called()
 
 
 class TestSubprocessTimeouts(base.TestCase):

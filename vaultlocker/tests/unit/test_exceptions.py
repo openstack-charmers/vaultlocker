@@ -30,6 +30,13 @@ class TestExceptions(base.TestCase):
 
         self.assertEqual('boom', str(error))
 
+    def test_cluster_identity_mismatch_message(self):
+        error = exceptions.ClusterIdentityMismatchError('cluster-a',
+                                                        'cluster-b')
+
+        self.assertIn('cluster-a', str(error))
+        self.assertIn('cluster-b', str(error))
+
     def test_managed_key_not_found_message(self):
         error = exceptions.ManagedKeyNotFoundError('mount/host/uuid')
 

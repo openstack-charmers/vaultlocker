@@ -19,10 +19,12 @@ import getpass
 import json
 import logging
 import os
+from pathlib import Path
 import platform
 import socket
 import subprocess
 import sys
+import tempfile
 import uuid
 
 import hvac
@@ -40,22 +42,96 @@ DEFAULT_CONF_FILE = '/etc/vaultlocker/vaultlocker.conf'
 
 REQUIRED_VAULT_SETTINGS = ('url', 'approle', 'secret_id', 'backend')
 
+#: Suffix of the sidecar file pinning the Vault cluster identity.
+CLUSTER_ID_SUFFIX = '.cluster-id'
+
 
 def _vault_client(config):
-    """Helper wrapper to create Vault Client
-
-    :param: config: configparser object of vaultlocker config
-    :returns: hvac.Client. configured Vault Client object
-    """
-    client = hvac.Client(
+    """Create an unauthenticated Vault client."""
+    return hvac.Client(
         url=config.get('vault', 'url'),
-        verify=config.get('vault', 'ca_bundle', fallback=True)
+        verify=config.get('vault', 'ca_bundle', fallback=True),
     )
+
+
+def _login_to_vault(client, config):
+    """Authenticate a Vault client with AppRole credentials."""
     client.auth.approle.login(
         role_id=config.get('vault', 'approle'),
-        secret_id=config.get('vault', 'secret_id')
+        secret_id=config.get('vault', 'secret_id'),
     )
-    return client
+
+
+def _cluster_pin_path(config_path):
+    """Return the cluster pin path for a configuration file."""
+    return '{}{}'.format(config_path, CLUSTER_ID_SUFFIX)
+
+
+def _read_cluster_pin(path):
+    """Read the cluster pin from a sidecar."""
+    try:
+        with open(path, 'r', encoding='utf-8') as sidecar:
+            value = sidecar.read().strip()
+    except (OSError, UnicodeError) as read_error:
+        raise exceptions.ClusterIdentityError(
+            'Unable to read Vault cluster identity {}: {}'.format(
+                path, read_error,
+            )
+        ) from read_error
+    if not value:
+        raise exceptions.ClusterIdentityError(
+            'Invalid Vault cluster identity in {}'.format(path)
+        )
+    return value
+
+
+def _create_cluster_pin(path, cluster_id):
+    """Create a complete pin without replacing an existing one."""
+    path = Path(path)
+    try:
+        # For almost all runs, the pin already exists.
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            return _read_cluster_pin(path)
+
+        fd, temporary_name = tempfile.mkstemp(dir=path.parent)
+        temporary_path = Path(temporary_name)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as temp_file:
+                os.fchmod(temp_file.fileno(), 0o600)
+                temp_file.write(cluster_id)
+
+            try:
+                os.link(temporary_path, path)
+            except FileExistsError:
+                # Another process created it first.
+                return _read_cluster_pin(path)
+
+            return cluster_id
+        finally:
+            temporary_path.unlink(missing_ok=True)
+    except (OSError, UnicodeError) as error:
+        raise exceptions.ClusterIdentityError(
+            'Unable to create Vault cluster identity {}: {}'.format(
+                path, error,
+            )
+        ) from error
+
+
+def _verify_cluster_identity(client, config_path):
+    """Pin the Vault cluster on first use and verify later connections."""
+    observed_id = vault.get_cluster_id(client)
+
+    pin_path = _cluster_pin_path(config_path)
+    pinned_id = _create_cluster_pin(pin_path, observed_id)
+
+    if pinned_id != observed_id:
+        raise exceptions.ClusterIdentityMismatchError(
+            pinned_id, observed_id,
+        )
 
 
 def _get_kv_version(config):
@@ -590,12 +666,14 @@ def _device_exists(block_uuid):
     return os.path.exists(path)
 
 
-def _do_it_with_persistence(func, args, config):
+def _do_it_with_persistence(func, args, config,
+                            fail_on_cluster_mismatch=True):
     """Run an operation, retrying temporary Vault availability failures.
 
     :param: func: function to attempt to execute
     :param: args: argparser generated cli arguments
     :param: config: configparser object of vaultlocker config
+    :param: fail_on_cluster_mismatch: whether to stop on a mismatch
     :returns: the operation result
     """
     @tenacity.retry(
@@ -613,6 +691,13 @@ def _do_it_with_persistence(func, args, config):
         )
     def _do_it():
         client = _vault_client(config)
+        _login_to_vault(client, config)
+        try:
+            _verify_cluster_identity(client, args.config)
+        except exceptions.ClusterIdentityMismatchError as mismatch_error:
+            if fail_on_cluster_mismatch:
+                raise
+            logger.warning('Cluster identity mismatch: %s', mismatch_error)
         return func(args, client, config)
 
     try:
@@ -678,7 +763,10 @@ def decrypt(args, config):
     :param: args: argparser generated cli arguments
     :param: config: configparser object of vaultlocker config
     """
-    return _do_it_with_persistence(_decrypt_block_device, args, config)
+    return _do_it_with_persistence(
+        _decrypt_block_device, args, config,
+        fail_on_cluster_mismatch=False,
+    )
 
 
 def get_config(config_path):

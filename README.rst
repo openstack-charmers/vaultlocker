@@ -82,12 +82,21 @@ UUID)::
 
     sudo vaultlocker decrypt f65b9e66-8f0c-4cae-b6f5-6ec85ea134f2
 
-Vault authentication
---------------------
+Vault authentication and cluster identity
+-----------------------------------------
 
 Authentication to Vault is done using an AppRole with a secret_id; its assumed
 that a CIDR based ACL is in use to only allow permitted systems within the
 Data Center to login and retrieve secrets from Vault.
+
+After authentication, vaultlocker saves the Vault cluster ID in ``<config-path>.cluster-id``.
+If the ID later changes, ``encrypt`` and ``enroll`` operations will fail with an error.
+``decrypt`` will log a warning and try to find the key in the observed Vault cluster. If
+that Vault does not have the key, vaultlocker cannot unlock the device.
+
+If the change is unexpected, check the Vault url and restore the connection to
+the original cluster.  Deleting the pin does not move existing keys.
+Vaultlocker does not support automatically migrating keys between clusters.
 
 * Free software: Apache license
 * Documentation: https://docs.openstack.org/vaultlocker/latest
