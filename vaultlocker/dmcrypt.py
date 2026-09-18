@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 
 KEY_SIZE = 4096
 
+#: Maximum time to wait for a cryptsetup command.
+CRYPTSETUP_TIMEOUT_SECONDS = 300
+
+#: Maximum time to wait for a udevadm command.
+UDEVADM_TIMEOUT_SECONDS = 60
+
 
 def _key_bytes(key):
     """Normalize key material for subprocess input.
@@ -68,6 +74,7 @@ def luks_format(key, device, uuid):
     subprocess.check_output(
         command,
         input=_key_bytes(key),
+        timeout=CRYPTSETUP_TIMEOUT_SECONDS,
     )
 
 
@@ -99,6 +106,7 @@ def luks_open(key, uuid, device=None):
     subprocess.check_output(
         command,
         input=_key_bytes(key),
+        timeout=CRYPTSETUP_TIMEOUT_SECONDS,
     )
     return handle
 
@@ -115,7 +123,10 @@ def luks_uuid(device):
         'luksUUID',
         device,
     ]
-    return subprocess.check_output(command).decode('utf-8').strip()
+    return subprocess.check_output(
+        command,
+        timeout=CRYPTSETUP_TIMEOUT_SECONDS,
+    ).decode('utf-8').strip()
 
 
 def luks_test_key(key, device):
@@ -141,6 +152,7 @@ def luks_test_key(key, device):
         subprocess.check_output(
             command,
             input=_key_bytes(key),
+            timeout=CRYPTSETUP_TIMEOUT_SECONDS,
         )
     except subprocess.CalledProcessError as exc:
         if exc.returncode == 2:
@@ -183,6 +195,7 @@ def luks_add_key(existing_key, new_key, device):
             command,
             input=_key_bytes(new_key),
             pass_fds=(existing_key_fd,),
+            timeout=CRYPTSETUP_TIMEOUT_SECONDS,
         )
     finally:
         os.close(existing_key_fd)
@@ -203,7 +216,10 @@ def udevadm_rescan(device):
         '--name-match={}'.format(device),
         '--action=add'
     ]
-    subprocess.check_output(command)
+    subprocess.check_output(
+        command,
+        timeout=UDEVADM_TIMEOUT_SECONDS,
+    )
 
 
 def udevadm_settle(uuid):
@@ -220,4 +236,7 @@ def udevadm_settle(uuid):
         'settle',
         '--exit-if-exists=/dev/disk/by-uuid/{}'.format(uuid),
     ]
-    subprocess.check_output(command)
+    subprocess.check_output(
+        command,
+        timeout=UDEVADM_TIMEOUT_SECONDS,
+    )
