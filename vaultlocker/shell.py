@@ -16,6 +16,7 @@ import argparse
 import configparser
 import functools
 import getpass
+import json
 import logging
 import os
 import platform
@@ -30,11 +31,14 @@ import tenacity
 from vaultlocker import boot_unlock
 from vaultlocker import dmcrypt
 from vaultlocker import exceptions
+from vaultlocker.exit_codes import ExitCode
 from vaultlocker import vault
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONF_FILE = '/etc/vaultlocker/vaultlocker.conf'
+
+REQUIRED_VAULT_SETTINGS = ('url', 'approle', 'secret_id', 'backend')
 
 
 def _vault_client(config):
@@ -59,11 +63,11 @@ def _get_kv_version(config):
 
     :param config: configparser object of vaultlocker config
     :returns: str: KV version ('1' or '2')
-    :raises ValueError: If the configured value is not '1' or '2'.
+    :raises exceptions.ConfigurationError: if the value is not '1' or '2'
     """
     version = config.get('vault', 'kv_version', fallback=vault.KV_VERSION_1)
     if version not in (vault.KV_VERSION_1, vault.KV_VERSION_2):
-        raise ValueError(
+        raise exceptions.ConfigurationError(
             "Invalid kv_version '{}' in vaultlocker config; "
             "must be '{}' or '{}'".format(
                 version, vault.KV_VERSION_1, vault.KV_VERSION_2
@@ -295,6 +299,11 @@ def _enroll_block_device(args, client, config, existing_key):
 
     boot_unlock.register(block_uuid, args.config)
 
+    return {
+        'luks_uuid': block_uuid,
+        'mapper_path': _mapper_path(block_uuid),
+    }
+
 
 def _encrypt_block_device(args, client, config):
     """Encrypt and open a block device
@@ -359,6 +368,11 @@ def _encrypt_block_device(args, client, config):
 
     boot_unlock.register(block_uuid, args.config)
 
+    return {
+        'luks_uuid': block_uuid,
+        'mapper_path': _mapper_path(block_uuid),
+    }
+
 
 def _decrypt_block_device(args, client, config):
     """Open a LUKS/dm-crypt encrypted block device
@@ -393,10 +407,14 @@ def _decrypt_block_device(args, client, config):
     dmcrypt.luks_open(key, block_uuid)
 
 
+def _mapper_path(block_uuid):
+    """Return the dm-crypt mapper path for a LUKS UUID."""
+    return '/dev/mapper/crypt-{}'.format(block_uuid)
+
+
 def _device_exists(block_uuid):
     """Checks if the device already exists."""
-    handle = 'crypt-{}'.format(block_uuid)
-    path = "/dev/mapper/{}".format(handle)
+    path = _mapper_path(block_uuid)
     logger.info('Checking if %s exists.', path)
     return os.path.exists(path)
 
@@ -422,8 +440,12 @@ def _do_it_with_persistence(func, args, config):
         )
     def _do_it():
         client = _vault_client(config)
-        func(args, client, config)
-    _do_it()
+        return func(args, client, config)
+
+    try:
+        return _do_it()
+    except hvac.exceptions.VaultError as vault_error:
+        raise exceptions.VaultConnectionError(vault_error) from vault_error
 
 
 def encrypt(args, config):
@@ -432,7 +454,7 @@ def encrypt(args, config):
     :param: args: argparser generated cli arguments
     :param: config: configparser object of vaultlocker config
     """
-    _do_it_with_persistence(_encrypt_block_device, args, config)
+    return _do_it_with_persistence(_encrypt_block_device, args, config)
 
 
 def enroll(args, config):
@@ -450,7 +472,7 @@ def enroll(args, config):
         existing_key=existing_key,
     )
 
-    _do_it_with_persistence(
+    return _do_it_with_persistence(
         enroll_operation,
         args,
         config,
@@ -463,11 +485,11 @@ def decrypt(args, config):
     :param: args: argparser generated cli arguments
     :param: config: configparser object of vaultlocker config
     """
-    _do_it_with_persistence(_decrypt_block_device, args, config)
+    return _do_it_with_persistence(_decrypt_block_device, args, config)
 
 
 def get_config(config_path):
-    """Read vaultlocker configuration from config file
+    """Read and validate a vaultlocker configuration file.
 
     :param: config_path: path to the configuration file
     :returns: configparser. Parsed configuration options
@@ -478,16 +500,35 @@ def get_config(config_path):
         )
 
     config = configparser.ConfigParser()
-    if os.path.exists(config_path):
-        config.read(config_path)
-    else:
-        raise FileNotFoundError(
-            "Configuration file not found: {}".format(config_path)
-        )
+
+    try:
+        with open(config_path, 'r') as config_file:
+            config.read_file(config_file)
+
+        for option in REQUIRED_VAULT_SETTINGS:
+            value = config.get('vault', option)
+            if not value.strip():
+                raise exceptions.ConfigurationError(
+                    "Configuration option [vault] {} cannot be empty".format(
+                        option,
+                    )
+                )
+
+        _get_kv_version(config)
+    except exceptions.ConfigurationError:
+        raise
+    except (OSError, configparser.Error) as config_error:
+        raise exceptions.ConfigurationError(
+            "Unable to load configuration {}: {}".format(
+                config_path, config_error,
+            )
+        ) from config_error
+
     return config
 
 
 def main():
+    """Run the command and print structured results."""
     parser = argparse.ArgumentParser('vaultlocker')
     parser.set_defaults(prog=parser.prog)
     subparsers = parser.add_subparsers(
@@ -550,17 +591,28 @@ def main():
 
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
 
     try:
-        if (len(vars(args)) <= 2):
+        if not hasattr(args, 'func'):
             parser.print_help()
         else:
-            args.func(args, get_config(args.config))
-    except Exception as e:
-        raise SystemExit(
-            '{prog}: {msg}'.format(
-                prog=args.prog,
-                msg=e,
-            )
+            result = args.func(args, get_config(args.config))
+            if isinstance(result, dict):
+                print(json.dumps(result))
+    except exceptions.VaultlockerException as vault_error:
+        print(
+            json.dumps({
+                'error': str(vault_error),
+            }),
+            file=sys.stderr,
         )
+        sys.exit(ExitCode.HANDLED_FAILURE)
+    except Exception as error:
+        print(
+            json.dumps({
+                'error': str(error),
+            }),
+            file=sys.stderr,
+        )
+        sys.exit(ExitCode.UNEXPECTED_FAILURE)

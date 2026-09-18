@@ -12,8 +12,11 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+"""Errors returned as controlled command failures."""
+
 
 class VaultlockerException(Exception):
+    """Base class for controlled vaultlocker errors."""
 
     def __init__(self, *args):
         if args:
@@ -23,6 +26,10 @@ class VaultlockerException(Exception):
 
     def __str__(self):
         return self.message
+
+
+class ConfigurationError(VaultlockerException):
+    """The vaultlocker configuration is missing or invalid."""
 
 
 class VaultWriteError(VaultlockerException):
@@ -52,6 +59,13 @@ class VaultKeyMismatch(VaultlockerException):
         super().__init__(
             "Vault key at path {} does not match with generated key".format(
                 path))
+
+
+class VaultConnectionError(VaultlockerException):
+    """Vault was unavailable or authentication failed."""
+
+    def __init__(self, error):
+        super().__init__("Unable to connect to Vault: {}".format(error))
 
 
 class LUKSFailure(VaultlockerException):

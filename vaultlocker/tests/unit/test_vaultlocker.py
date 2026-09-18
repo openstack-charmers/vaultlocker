@@ -722,7 +722,7 @@ class TestKVConfiguration(base.TestCase):
         )
 
     def test_kv_version_rejects_other_number(self):
-        with self.assertRaises(ValueError) as error:
+        with self.assertRaises(exceptions.ConfigurationError) as error:
             shell._get_kv_version(self._config('3'))
 
         self.assertIn(
