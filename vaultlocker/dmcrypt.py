@@ -155,6 +155,10 @@ def luks_test_key(key, device):
             timeout=CRYPTSETUP_TIMEOUT_SECONDS,
         )
     except subprocess.CalledProcessError as exc:
+        # cryptsetup returns exit code 2 for incorrect passphrase
+        # with --test-passphrase, this confirms that the given key
+        # does not unlock the device. Other exit codes are inconclusive
+        # and should be raised.
         if exc.returncode == 2:
             return False
         raise
