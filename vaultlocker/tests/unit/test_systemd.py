@@ -33,3 +33,50 @@ class TestSystemD(base.TestCase):
         _subprocess.check_call.assert_called_once_with(
             ['systemctl', 'enable', 'my-service.service']
         )
+
+    def test_config_dropin_path(self):
+        self.assertEqual(
+            '/etc/systemd/system/'
+            'vaultlocker-decrypt@test-uuid.service.d/config.conf',
+            systemd.config_dropin_path(
+                'vaultlocker-decrypt@test-uuid.service',
+            ),
+        )
+
+    @mock.patch.object(systemd.os, 'makedirs')
+    @mock.patch('builtins.open', new_callable=mock.mock_open)
+    def test_write_config_dropin(self, _open, _makedirs):
+        systemd.write_config_dropin(
+            'vaultlocker-decrypt@test-uuid.service',
+            '/var/snap/vaultlocker/common/app/vaultlocker.conf',
+        )
+
+        _makedirs.assert_called_once_with(
+            '/etc/systemd/system/'
+            'vaultlocker-decrypt@test-uuid.service.d',
+            exist_ok=True,
+        )
+        _open.assert_called_once_with(
+            '/etc/systemd/system/'
+            'vaultlocker-decrypt@test-uuid.service.d/config.conf',
+            'w',
+        )
+        handle = _open()
+        handle.write.assert_called_once_with(
+            '[Service]\n'
+            'Environment=VAULTLOCKER_CONFIG='
+            '/var/snap/vaultlocker/common/app/vaultlocker.conf\n'
+        )
+
+    @mock.patch.object(systemd, 'enable')
+    @mock.patch.object(systemd, 'write_config_dropin')
+    def test_register_decrypt_service(self, _write_dropin, _enable):
+        systemd.register_decrypt_service('test-uuid', '/path/to/conf')
+
+        _write_dropin.assert_called_once_with(
+            'vaultlocker-decrypt@test-uuid.service',
+            '/path/to/conf',
+        )
+        _enable.assert_called_once_with(
+            'vaultlocker-decrypt@test-uuid.service',
+        )

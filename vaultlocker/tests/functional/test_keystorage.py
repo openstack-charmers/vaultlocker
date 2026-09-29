@@ -23,34 +23,35 @@ from vaultlocker.tests.functional import base
 
 @mock.patch.object(shell.dmcrypt, 'udevadm_settle')
 @mock.patch.object(shell.dmcrypt, 'udevadm_rescan')
-@mock.patch.object(shell, 'systemd')
+@mock.patch.object(shell, 'boot_unlock')
 @mock.patch.object(shell.dmcrypt, 'luks_format')
 @mock.patch.object(shell.dmcrypt, 'luks_open')
 class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
 
     """Test storage and retrieval of dm-crypt keys from vault"""
 
-    def test_encrypt(self, _luks_open, _luks_format, _systemd,
+    def test_encrypt(self, _luks_open, _luks_format, _boot_unlock,
                      _udevadm_rescan, _udevadm_settle):
         """Test encrypt function stores correct data in vault"""
+        _boot_unlock.running_in_snap.return_value = False
         args = mock.MagicMock()
         args.uuid = 'passed-UUID'
         args.block_device = ['/dev/sdb']
         args.retry = -1
+        args.config = '/etc/vaultlocker/vaultlocker.conf'
 
         shell.encrypt(args, self.config)
         _luks_format.assert_called_once_with(mock.ANY,
                                              '/dev/sdb',
                                              'passed-UUID')
-        _luks_open.assert_called_once_with(mock.ANY,
-                                           'passed-UUID')
-        _systemd.enable.assert_called_once_with(
-            'vaultlocker-decrypt@passed-UUID.service'
+        _luks_open.assert_called_once_with(
+            mock.ANY, 'passed-UUID', '/dev/sdb'
         )
-
-        # TODO(lucas): Temporarily disabled for initial snap packaging
-        # _udevadm_rescan.assert_called_once_with('/dev/sdb')
-        # _udevadm_settle.assert_called_once_with('passed-UUID')
+        _boot_unlock.register.assert_called_once_with(
+            'passed-UUID', args.config
+        )
+        _udevadm_rescan.assert_called_once_with('/dev/sdb')
+        _udevadm_settle.assert_called_once_with('passed-UUID')
 
         stored_data = self.vault_client.read(
             shell._get_vault_path('passed-UUID',
@@ -61,7 +62,7 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
         self.assertIn('dmcrypt_key', stored_data['data'],
                       'dm-crypt key data is missing')
 
-    def test_decrypt(self, _luks_open, _luks_format, _systemd,
+    def test_decrypt(self, _luks_open, _luks_format, _boot_unlock,
                      _udevadm_rescan, _udevadm_settle):
         """Test decrypt function retrieves correct key from vault"""
         args = mock.MagicMock()
@@ -74,11 +75,11 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
 
         shell.decrypt(args, self.config)
         _luks_format.assert_not_called()
-        _systemd.enable.assert_not_called()
+        _boot_unlock.register.assert_not_called()
         _luks_open.assert_called_once_with('testkey',
                                            'passed-UUID')
 
-    def test_decrypt_missing_key(self, _luks_open, _luks_format, _systemd,
+    def test_decrypt_missing_key(self, _luks_open, _luks_format, _boot_unlock,
                                  _udevadm_rescan, _udevadm_settle):
         """Test decrypt function errors if a key is missing from vault"""
         args = mock.MagicMock()
@@ -89,5 +90,5 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
                           shell.decrypt,
                           args, self.config)
         _luks_format.assert_not_called()
-        _systemd.enable.assert_not_called()
+        _boot_unlock.register.assert_not_called()
         _luks_open.assert_not_called()

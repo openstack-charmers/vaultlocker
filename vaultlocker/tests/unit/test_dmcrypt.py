@@ -63,6 +63,18 @@ class TestDMCrypt(base.TestCase):
             input='mykey'.encode('UTF-8')
         )
 
+    @mock.patch.object(dmcrypt, 'subprocess')
+    def test_luks_open_by_device(self, _subprocess):
+        dmcrypt.luks_open('mykey', 'test-uuid', '/dev/sdb')
+        _subprocess.check_output.assert_called_once_with(
+            ['cryptsetup',
+             '--batch-mode',
+             '--key-file', '-',
+             'open', '/dev/sdb', 'crypt-test-uuid',
+             '--type', 'luks'],
+            input='mykey'.encode('UTF-8')
+        )
+
     @mock.patch.object(dmcrypt, 'os')
     def test_generate_key(self, _os):
         _key = b'randomdatastringfromentropy'

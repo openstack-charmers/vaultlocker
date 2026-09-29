@@ -38,11 +38,27 @@ parts:
       craftctl set version="${version}"
       craftctl set grade="${grade}"
       craftctl default
+  pebble:
+    plugin: nil
+    stage-snaps:
+      - pebble
 
 apps:
   vaultlocker:
     command: bin/vaultlocker
+    environment:
+      PEBBLE: /var/snap/vaultlocker/common/pebble
     plugs:
       - network
+      - dm-crypt
+      - block-devices
+  pebble:
+    command: bin/pebble run --create-dirs
+    daemon: simple
+    environment:
+      PEBBLE: /var/snap/vaultlocker/common/pebble
+    plugs:
+      - network
+      - network-bind
       - dm-crypt
       - block-devices

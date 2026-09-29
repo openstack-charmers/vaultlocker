@@ -7,8 +7,9 @@ After=nss-lookup.target
 [Service]
 Type=oneshot
 KillMode=none
+Environment=VAULTLOCKER_CONFIG=/etc/vaultlocker/vaultlocker.conf
 Environment=VAULTLOCKER_TIMEOUT=10000
-ExecStart=/bin/sh -c 'vaultlocker --retry $VAULTLOCKER_TIMEOUT decrypt %i'
+ExecStart=/bin/sh -c 'vaultlocker --retry $VAULTLOCKER_TIMEOUT --config "$VAULTLOCKER_CONFIG" decrypt %i'
 TimeoutSec=0
 
 [Install]
