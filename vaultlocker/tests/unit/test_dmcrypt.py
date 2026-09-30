@@ -38,7 +38,8 @@ class TestDMCrypt(base.TestCase):
              '--uuid', 'test-uuid',
              '--key-file', '-',
              'luksFormat', '/dev/sdb'],
-            input='mykey'.encode('UTF-8')
+            input='mykey'.encode('UTF-8'),
+            timeout=dmcrypt.CRYPTSETUP_TIMEOUT_SECONDS,
         )
 
     def test_key_bytes_from_string(self):
@@ -60,7 +61,8 @@ class TestDMCrypt(base.TestCase):
              '--key-file', '-',
              'open', 'UUID=test-uuid', 'crypt-test-uuid',
              '--type', 'luks'],
-            input='mykey'.encode('UTF-8')
+            input='mykey'.encode('UTF-8'),
+            timeout=dmcrypt.CRYPTSETUP_TIMEOUT_SECONDS,
         )
 
     @mock.patch.object(dmcrypt, 'subprocess')
@@ -72,7 +74,8 @@ class TestDMCrypt(base.TestCase):
              '--key-file', '-',
              'open', '/dev/sdb', 'crypt-test-uuid',
              '--type', 'luks'],
-            input='mykey'.encode('UTF-8')
+            input='mykey'.encode('UTF-8'),
+            timeout=dmcrypt.CRYPTSETUP_TIMEOUT_SECONDS,
         )
 
     @mock.patch.object(dmcrypt, 'os')
@@ -94,7 +97,8 @@ class TestDMCrypt(base.TestCase):
         _subprocess.check_output.assert_called_once_with(
             ['cryptsetup',
              'luksUUID',
-             '/dev/sdb']
+             '/dev/sdb'],
+            timeout=dmcrypt.CRYPTSETUP_TIMEOUT_SECONDS,
         )
 
     @mock.patch.object(dmcrypt.subprocess, 'check_output')
@@ -110,7 +114,8 @@ class TestDMCrypt(base.TestCase):
         _check_output.assert_called_once_with(
             ['cryptsetup',
              'luksUUID',
-             '/dev/sdb']
+             '/dev/sdb'],
+            timeout=dmcrypt.CRYPTSETUP_TIMEOUT_SECONDS,
         )
 
     @mock.patch.object(dmcrypt, 'subprocess')
@@ -125,7 +130,8 @@ class TestDMCrypt(base.TestCase):
              'open',
              '--test-passphrase',
              '/dev/sdb'],
-            input=b'mykey'
+            input=b'mykey',
+            timeout=dmcrypt.CRYPTSETUP_TIMEOUT_SECONDS,
         )
 
     @mock.patch.object(dmcrypt.subprocess, 'check_output')
@@ -145,7 +151,8 @@ class TestDMCrypt(base.TestCase):
              'open',
              '--test-passphrase',
              '/dev/sdb'],
-            input=b'mykey'
+            input=b'mykey',
+            timeout=dmcrypt.CRYPTSETUP_TIMEOUT_SECONDS,
         )
 
     @mock.patch.object(dmcrypt.subprocess, 'check_output')
@@ -165,7 +172,8 @@ class TestDMCrypt(base.TestCase):
              'open',
              '--test-passphrase',
              '/dev/sdb'],
-            input=b'mykey'
+            input=b'mykey',
+            timeout=dmcrypt.CRYPTSETUP_TIMEOUT_SECONDS,
         )
 
     @mock.patch.object(dmcrypt, 'subprocess')
@@ -189,7 +197,8 @@ class TestDMCrypt(base.TestCase):
              '--new-keyfile', '-',
              'luksAddKey', '/dev/sdb'],
             input=b'new-key',
-            pass_fds=(10,)
+            pass_fds=(10,),
+            timeout=dmcrypt.CRYPTSETUP_TIMEOUT_SECONDS,
         )
         _os.close.assert_called_once_with(10)
 
@@ -218,7 +227,8 @@ class TestDMCrypt(base.TestCase):
              '--new-keyfile', '-',
              'luksAddKey', '/dev/sdb'],
             input=b'new-key',
-            pass_fds=(10,)
+            pass_fds=(10,),
+            timeout=dmcrypt.CRYPTSETUP_TIMEOUT_SECONDS,
         )
         _os.close.assert_called_once_with(10)
 
@@ -229,7 +239,8 @@ class TestDMCrypt(base.TestCase):
             ['udevadm',
              'trigger',
              '--name-match=/dev/vdb',
-             '--action=add']
+             '--action=add'],
+            timeout=dmcrypt.UDEVADM_TIMEOUT_SECONDS,
         )
 
     @mock.patch.object(dmcrypt, 'subprocess')
@@ -238,5 +249,15 @@ class TestDMCrypt(base.TestCase):
         _subprocess.check_output.assert_called_once_with(
             ['udevadm',
              'settle',
-             '--exit-if-exists=/dev/disk/by-uuid/myuuid']
+             '--exit-if-exists=/dev/disk/by-uuid/myuuid'],
+            timeout=dmcrypt.UDEVADM_TIMEOUT_SECONDS,
         )
+
+    @mock.patch.object(dmcrypt.subprocess, 'check_output')
+    def test_luks_format_timeout_propagates(self, _check_output):
+        _check_output.side_effect = subprocess.TimeoutExpired(
+            cmd='cryptsetup', timeout=1,
+        )
+
+        with self.assertRaises(subprocess.TimeoutExpired):
+            dmcrypt.luks_format('mykey', '/dev/sdb', 'test-uuid')
