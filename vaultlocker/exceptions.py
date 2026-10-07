@@ -112,3 +112,17 @@ class MapperOpenError(LUKSFailure):
 
 class BootConfigError(LUKSFailure):
     """Registering the boot-time unlock mechanism failed."""
+
+
+class ClusterIdentityError(VaultlockerException):
+    """The Vault cluster identity could not be verified."""
+
+
+class ClusterIdentityMismatchError(ClusterIdentityError):
+    """The connected Vault cluster does not match the saved cluster."""
+
+    def __init__(self, expected, actual):
+        super().__init__(
+            "Vault cluster identity mismatch: pinned cluster_id={}, "
+            "observed cluster_id={}".format(expected, actual)
+        )

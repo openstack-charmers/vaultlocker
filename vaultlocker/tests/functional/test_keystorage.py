@@ -34,6 +34,94 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
     Subclasses run this suite against KV version 1 and 2.
     """
 
+    def test_cluster_identity_pin_with_real_vault(
+            self, _luks_open, _luks_format, _boot_unlock,
+            _udevadm_rescan, _udevadm_settle):
+        """Seal status provides the value stored in the pin."""
+        shell._verify_cluster_identity(self.vault_client, self.config_path)
+
+        pin_path = shell._cluster_pin_path(self.config_path)
+        with open(pin_path, 'r', encoding='utf-8') as sidecar:
+            self.assertEqual(
+                shell.vault.get_cluster_id(self.vault_client),
+                sidecar.read(),
+            )
+
+    def _write_mismatching_pin(self):
+        pin_path = shell._cluster_pin_path(self.config_path)
+        with open(pin_path, 'w', encoding='utf-8') as sidecar:
+            sidecar.write('different-cluster')
+        return pin_path
+
+    def test_cluster_mismatch_stops_encrypt(
+            self, _luks_open, _luks_format, _boot_unlock,
+            _udevadm_rescan, _udevadm_settle):
+        """Encrypt does not change a device on a cluster mismatch."""
+        pin_path = self._write_mismatching_pin()
+
+        args = mock.MagicMock()
+        args.uuid = 'passed-UUID'
+        args.block_device = ['/dev/sdb']
+        args.retry = -1
+        args.config = self.config_path
+
+        with self.assertRaises(shell.exceptions.ClusterIdentityMismatchError):
+            shell.encrypt(args, self.config)
+
+        _luks_open.assert_not_called()
+        _luks_format.assert_not_called()
+        with open(pin_path, 'r', encoding='utf-8') as sidecar:
+            self.assertEqual('different-cluster', sidecar.read())
+
+    def test_cluster_mismatch_stops_enroll(
+            self, _luks_open, _luks_format, _boot_unlock,
+            _udevadm_rescan, _udevadm_settle):
+        """Enroll does not change a device on a cluster mismatch."""
+        pin_path = self._write_mismatching_pin()
+
+        args = mock.MagicMock()
+        args.block_device = ['/dev/sdb']
+        args.existing_key_file = None
+        args.retry = -1
+        args.config = self.config_path
+
+        with mock.patch.object(shell, '_read_existing_key') as read_key:
+            with self.assertRaises(
+                    shell.exceptions.ClusterIdentityMismatchError):
+                shell.enroll(args, self.config)
+
+        read_key.assert_not_called()
+        _luks_open.assert_not_called()
+        with open(pin_path, 'r', encoding='utf-8') as sidecar:
+            self.assertEqual('different-cluster', sidecar.read())
+
+    def test_cluster_mismatch_warns_and_attempts_decrypt(
+            self, _luks_open, _luks_format, _boot_unlock,
+            _udevadm_rescan, _udevadm_settle):
+        """Decrypt attempts an unlock with a key from the observed Vault."""
+        pin_path = self._write_mismatching_pin()
+        self.vault_store().write(
+            self.secret_path('passed-UUID'),
+            {'dmcrypt_key': 'testkey'},
+        )
+
+        args = mock.MagicMock()
+        args.uuid = ['passed-UUID']
+        args.retry = -1
+        args.config = self.config_path
+
+        with mock.patch.object(shell, '_device_exists', return_value=False):
+            with self.assertLogs(shell.logger, level='WARNING') as logged:
+                shell.decrypt(args, self.config)
+
+        self.assertTrue(any(
+            'Vault cluster identity mismatch' in warning
+            for warning in logged.output
+        ))
+        _luks_open.assert_called_once_with('testkey', 'passed-UUID')
+        with open(pin_path, 'r', encoding='utf-8') as sidecar:
+            self.assertEqual('different-cluster', sidecar.read())
+
     def test_encrypt(self, _luks_open, _luks_format, _boot_unlock,
                      _udevadm_rescan, _udevadm_settle):
         """Test encrypt function stores correct data in vault"""

@@ -83,8 +83,10 @@ class TestCommandResults(base.TestCase):
             file=shell.sys.stderr,
         )
 
+    @mock.patch.object(shell, '_verify_cluster_identity')
     @mock.patch.object(shell, '_vault_client')
-    def test_retry_wrapper_returns_operation_result(self, vault_client):
+    def test_retry_wrapper_returns_operation_result(
+            self, vault_client, verify_cluster_identity):
         operation = mock.Mock(return_value={'luks_uuid': 'test-uuid'})
         args = mock.Mock(retry=-1)
         config = mock.Mock()
@@ -94,6 +96,9 @@ class TestCommandResults(base.TestCase):
         self.assertEqual({'luks_uuid': 'test-uuid'}, result)
         operation.assert_called_once_with(
             args, vault_client.return_value, config,
+        )
+        verify_cluster_identity.assert_called_once_with(
+            vault_client.return_value, args.config,
         )
 
     @mock.patch.object(shell, '_vault_client')

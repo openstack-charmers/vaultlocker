@@ -1,6 +1,9 @@
 [run]
 branch = True
 source = vaultlocker
+omit =
+    vaultlocker/tests/*
 
 [report]
 ignore_errors = True
+fail_under = 90
