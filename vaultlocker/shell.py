@@ -152,6 +152,25 @@ def _get_kv_version(config):
     return version
 
 
+def _bypass_workqueues(config):
+    """Return whether dm-crypt workqueues may be bypassed.
+
+    :param config: configparser object of vaultlocker config
+    :returns: bool: False if disabled in the configuration
+    :raises exceptions.ConfigurationError: if the value is not a boolean
+    """
+    try:
+        return config.getboolean(
+            'dmcrypt', 'bypass_workqueues', fallback=True,
+        )
+    except ValueError as value_error:
+        raise exceptions.ConfigurationError(
+            "Invalid bypass_workqueues in vaultlocker config: {}".format(
+                value_error,
+            )
+        ) from value_error
+
+
 def get_hostname(config):
     """Determine the hostname to use in Vault paths.
 
@@ -418,11 +437,15 @@ def _ensure_vault_key(store, path, expected_key):
         )
 
 
-def _open_and_register_device(block_device, block_uuid, key, config_path):
+def _open_and_register_device(block_device, block_uuid, key, config,
+                              config_path):
     """Open the mapper if needed and register it for boot."""
     if not _device_exists(block_uuid):
         try:
-            dmcrypt.luks_open(key, block_uuid, block_device)
+            dmcrypt.luks_open(
+                key, block_uuid, block_device,
+                bypass_workqueues=_bypass_workqueues(config),
+            )
         except (subprocess.CalledProcessError,
                 subprocess.TimeoutExpired) as open_error:
             raise exceptions.MapperOpenError(
@@ -466,7 +489,7 @@ def _open_existing_managed_device(args, client, config, block_device,
         )
 
     return _open_and_register_device(
-        block_device, block_uuid, vault_key, args.config,
+        block_device, block_uuid, vault_key, config, args.config,
     )
 
 
@@ -533,7 +556,7 @@ def _format_device(args, client, config, block_device, block_uuid, key):
                 )
 
     return _open_and_register_device(
-        block_device, block_uuid, key, args.config,
+        block_device, block_uuid, key, config, args.config,
     )
 
 
@@ -587,7 +610,7 @@ def _enroll_block_device(args, client, config, get_operator_key):
     if vault_key is not None and _key_unlocks_device(vault_key, block_device):
         # Reuse an enrolled key without asking for the current key.
         return _open_and_register_device(
-            block_device, block_uuid, vault_key, args.config,
+            block_device, block_uuid, vault_key, config, args.config,
         )
 
     # Read the operator's key only when the device needs to change.
@@ -618,7 +641,7 @@ def _enroll_block_device(args, client, config, get_operator_key):
         )
 
     return _open_and_register_device(
-        block_device, block_uuid, vault_key, args.config,
+        block_device, block_uuid, vault_key, config, args.config,
     )
 
 
@@ -650,7 +673,10 @@ def _decrypt_block_device(args, client, config):
         )
 
     try:
-        dmcrypt.luks_open(vault_key, block_uuid)
+        dmcrypt.luks_open(
+            vault_key, block_uuid,
+            bypass_workqueues=_bypass_workqueues(config),
+        )
     except (subprocess.CalledProcessError,
             subprocess.TimeoutExpired) as open_error:
         raise exceptions.MapperOpenError(
@@ -797,6 +823,7 @@ def get_config(config_path):
                 )
 
         _get_kv_version(config)
+        _bypass_workqueues(config)
     except exceptions.ConfigurationError:
         raise
     except (OSError, configparser.Error) as config_error:

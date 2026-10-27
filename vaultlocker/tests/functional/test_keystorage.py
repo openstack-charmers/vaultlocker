@@ -118,7 +118,9 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
             'Vault cluster identity mismatch' in warning
             for warning in logged.output
         ))
-        _luks_open.assert_called_once_with('testkey', 'passed-UUID')
+        _luks_open.assert_called_once_with(
+            'testkey', 'passed-UUID', bypass_workqueues=True,
+        )
         with open(pin_path, 'r', encoding='utf-8') as sidecar:
             self.assertEqual('different-cluster', sidecar.read())
 
@@ -144,8 +146,9 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
 
         _luks_format.assert_called_once_with(mock.ANY, '/dev/sdb',
                                              'passed-UUID')
-        _luks_open.assert_called_once_with(mock.ANY, 'passed-UUID',
-                                           '/dev/sdb')
+        _luks_open.assert_called_once_with(
+            mock.ANY, 'passed-UUID', '/dev/sdb', bypass_workqueues=True,
+        )
         _boot_unlock.register.assert_called_once_with('passed-UUID',
                                                       self.config_path)
         _udevadm_rescan.assert_called_once_with('/dev/sdb')
@@ -231,7 +234,9 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
 
         _luks_format.assert_not_called()
         _boot_unlock.register.assert_not_called()
-        _luks_open.assert_called_once_with('testkey', 'passed-UUID')
+        _luks_open.assert_called_once_with(
+            'testkey', 'passed-UUID', bypass_workqueues=True,
+        )
 
     def test_decrypt_missing_key(self, _luks_open, _luks_format, _boot_unlock,
                                  _udevadm_rescan, _udevadm_settle):
@@ -272,8 +277,9 @@ class KeyStorageTestCase(base.VaultlockerFuncBaseTestCase):
 
         add_key.assert_called_once_with(b'operatorpass', mock.ANY,
                                         '/dev/sdb')
-        _luks_open.assert_called_once_with(mock.ANY, 'passed-UUID',
-                                           '/dev/sdb')
+        _luks_open.assert_called_once_with(
+            mock.ANY, 'passed-UUID', '/dev/sdb', bypass_workqueues=True,
+        )
         _boot_unlock.register.assert_called_once_with('passed-UUID',
                                                       self.config_path)
 
