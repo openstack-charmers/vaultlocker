@@ -15,6 +15,8 @@
 import base64
 import logging
 import os
+import re
+import stat
 import subprocess
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,21 @@ CRYPTSETUP_TIMEOUT_SECONDS = 300
 
 #: Maximum time to wait for a udevadm command.
 UDEVADM_TIMEOUT_SECONDS = 60
+
+#: cryptsetup options bypassing the dm-crypt read and write workqueues.
+NO_WORKQUEUE_OPTIONS = (
+    '--perf-no_read_workqueue',
+    '--perf-no_write_workqueue',
+)
+
+#: First kernel release whose dm-crypt target can bypass its workqueues.
+NO_WORKQUEUE_MIN_KERNEL = (5, 9, 0)
+
+#: First cryptsetup release providing the workqueue bypass options.
+NO_WORKQUEUE_MIN_CRYPTSETUP = (2, 3, 4)
+
+#: sysfs directory linking block device numbers to their devices.
+SYSFS_DEV_BLOCK = '/sys/dev/block'
 
 
 def _key_bytes(key):
@@ -78,7 +95,130 @@ def luks_format(key, device, uuid):
     )
 
 
-def luks_open(key, uuid, device=None):
+def _version(text):
+    """Parse the first dotted version number in a string.
+
+    :param: text: string containing a version, e.g. a kernel release.
+    :returns: tuple. Major, minor and patch numbers.
+    :raises ValueError: if the string contains no version.
+    """
+    match = re.search(r'(\d+)\.(\d+)(?:\.(\d+))?', text)
+    if not match:
+        raise ValueError('Unable to parse a version from {!r}'.format(text))
+    return tuple(int(part) for part in match.groups(default='0'))
+
+
+def cryptsetup_version():
+    """Get the installed cryptsetup version.
+
+    :returns: tuple. Major, minor and patch numbers.
+    """
+    output = subprocess.check_output(
+        ['cryptsetup', '--version'],
+        timeout=CRYPTSETUP_TIMEOUT_SECONDS,
+    ).decode('utf-8')
+    return _version(output)
+
+
+def _sysfs_block_dir(device):
+    """Return the sysfs directory of a block device node.
+
+    :param: device: path to a block device node or a symlink to one.
+    :returns: str. Resolved sysfs directory of the device.
+    :raises ValueError: if the path is not a block device.
+    """
+    device_stat = os.stat(device)
+    if not stat.S_ISBLK(device_stat.st_mode):
+        raise ValueError('{} is not a block device'.format(device))
+    return os.path.realpath(os.path.join(
+        SYSFS_DEV_BLOCK,
+        '{}:{}'.format(
+            os.major(device_stat.st_rdev),
+            os.minor(device_stat.st_rdev),
+        ),
+    ))
+
+
+def _sysfs_rotational(sysfs_dir):
+    """Return whether any storage beneath a sysfs block device rotates.
+
+    Partitions are resolved through their parent disk, and stacked
+    devices such as LVM, multipath and MD RAID through their slaves.
+
+    :param: sysfs_dir: resolved sysfs directory of a block device.
+    :returns: bool. True if any backing device is rotational.
+    """
+    if os.path.exists(os.path.join(sysfs_dir, 'partition')):
+        # The parent may itself be a stacked device, e.g. an MD array.
+        return _sysfs_rotational(os.path.dirname(sysfs_dir))
+
+    slaves_dir = os.path.join(sysfs_dir, 'slaves')
+    slaves = os.listdir(slaves_dir) if os.path.isdir(slaves_dir) else []
+    if slaves:
+        return any(
+            _sysfs_rotational(
+                os.path.realpath(os.path.join(slaves_dir, slave))
+            )
+            for slave in slaves
+        )
+
+    with open(os.path.join(sysfs_dir, 'queue', 'rotational')) as rotational:
+        return rotational.read().strip() != '0'
+
+
+def is_rotational(device):
+    """Determine whether a block device is backed by rotational storage.
+
+    :param: device: path to a block device node or a symlink to one.
+    :returns: bool. True if any backing device is rotational.
+    """
+    return _sysfs_rotational(_sysfs_block_dir(device))
+
+
+def can_bypass_workqueues(device):
+    """Determine whether to bypass the dm-crypt workqueues for a device.
+
+    The workqueues are bypassed when the kernel and cryptsetup support
+    it and all storage backing the device is non-rotational. If any of
+    these cannot be determined, the workqueues are kept.
+
+    :param: device: path to the LUKS block device.
+    :returns: bool. True if the workqueues can be bypassed.
+    """
+    try:
+        kernel = os.uname().release
+        if _version(kernel) < NO_WORKQUEUE_MIN_KERNEL:
+            logger.info(
+                'Keeping dm-crypt workqueues for %s: kernel %s does not '
+                'support bypassing them', device, kernel,
+            )
+            return False
+
+        if is_rotational(device):
+            logger.info(
+                'Keeping dm-crypt workqueues for %s: backing storage is '
+                'rotational', device,
+            )
+            return False
+
+        if cryptsetup_version() < NO_WORKQUEUE_MIN_CRYPTSETUP:
+            logger.info(
+                'Keeping dm-crypt workqueues for %s: cryptsetup is older '
+                'than %s', device,
+                '.'.join(str(part) for part in NO_WORKQUEUE_MIN_CRYPTSETUP),
+            )
+            return False
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        logger.warning(
+            'Keeping dm-crypt workqueues for %s: unable to determine '
+            'support for bypassing them: %s', device, error,
+        )
+        return False
+
+    return True
+
+
+def luks_open(key, uuid, device=None, bypass_workqueues=False):
     """LUKS open a block device.
 
     Open a block device using dm-crypt/LUKS with the
@@ -87,6 +227,8 @@ def luks_open(key, uuid, device=None):
     :param: key: string containing the encryption key to use.
     :param: uuid: uuid to use for encrypted block device.
     :param: device: optional block device path. If omitted, use the UUID.
+    :param: bypass_workqueues: bypass the dm-crypt workqueues when the
+        kernel, cryptsetup and backing storage support it.
     :returns: str. dm-crypt mapping
     """
     logger.info('LUKS opening %s', uuid)
@@ -103,6 +245,10 @@ def luks_open(key, uuid, device=None):
         '--type',
         'luks',
     ]
+    if bypass_workqueues and can_bypass_workqueues(
+            device or '/dev/disk/by-uuid/{}'.format(uuid)):
+        logger.info('Bypassing dm-crypt workqueues for %s', handle)
+        command.extend(NO_WORKQUEUE_OPTIONS)
     subprocess.check_output(
         command,
         input=_key_bytes(key),

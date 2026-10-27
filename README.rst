@@ -82,6 +82,43 @@ UUID)::
 
     sudo vaultlocker decrypt f65b9e66-8f0c-4cae-b6f5-6ec85ea134f2
 
+dm-crypt workqueues
+-------------------
+
+On SSD and NVMe storage, vaultlocker opens devices with cryptsetup's
+``--perf-no_read_workqueue`` and ``--perf-no_write_workqueue`` options,
+which avoid the extra queuing dm-crypt otherwise adds. vaultlocker only
+does this when all of the following are true:
+
+* the kernel is 5.9 or later.
+* cryptsetup is 2.3.4 or later.
+* all storage backing the device is non-rotational. vaultlocker checks
+  through partitions, LVM and other device-mapper or MD RAID layers.
+
+If any of these cannot be determined, vaultlocker does not add the
+options. This applies to ``encrypt``, ``enroll`` and ``decrypt``,
+including the unlock at boot.
+
+To stop vaultlocker adding the options, for example while
+troubleshooting, set ``bypass_workqueues = false`` in the ``[dmcrypt]``
+section::
+
+    [dmcrypt]
+    bypass_workqueues = false
+
+This does not override flags stored in a LUKS2 header with ``cryptsetup
+--persistent``, which cryptsetup applies whenever the device is opened.
+vaultlocker never stores these flags, but a device added with ``enroll``
+may already have them. ``cryptsetup luksDump`` lists stored flags.
+
+vaultlocker does not change devices that are already open. A device
+opened by an earlier version of vaultlocker uses the new options after it
+is next opened, such as after a reboot. Alternatively, ``cryptsetup
+refresh --perf-no_read_workqueue --perf-no_write_workqueue crypt-<uuid>``
+applies them to an open device; like ``open``, it needs the device key.
+``cryptsetup status crypt-<uuid>`` lists ``no_read_workqueue
+no_write_workqueue`` under ``flags`` when the workqueues are bypassed.
+
 Vault authentication and cluster identity
 -----------------------------------------
 

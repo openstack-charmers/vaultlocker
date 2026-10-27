@@ -114,6 +114,7 @@ class VaultlockerFuncBaseTestCase(base.BaseTestCase):
             lambda s, k, **kwargs: self.test_config.get(s, {}).get(
                 k, kwargs.get('fallback')
             )
+        self.config.getboolean.side_effect = self.config.get.side_effect
 
         self.temp_dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.temp_dir, ignore_errors=True)

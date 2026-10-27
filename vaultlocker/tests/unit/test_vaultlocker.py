@@ -55,6 +55,7 @@ class TestVaultlocker(base.TestCase):
                 kwargs.get('fallback'),
             )
         self.config.get.side_effect = side_effect
+        self.config.getboolean.side_effect = side_effect
 
     def _hostname_config(self, hostname=None):
         config = configparser.ConfigParser()
@@ -135,7 +136,7 @@ class TestVaultlocker(base.TestCase):
 
         store.read.assert_called_once_with('host/passed-UUID')
         _dmcrypt.luks_open.assert_called_once_with(
-            'testkey', 'passed-UUID'
+            'testkey', 'passed-UUID', bypass_workqueues=True,
         )
         _boot_unlock.register.assert_not_called()
 
@@ -928,17 +929,22 @@ class TestEnsureVaultKey(base.TestCase):
 class TestOpenAndRegisterDevice(base.TestCase):
     """Tests opening and registering a device."""
 
+    def setUp(self):
+        super().setUp()
+        self.config = configparser.ConfigParser()
+
     @mock.patch.object(shell, '_register_boot_unlock')
     @mock.patch.object(shell, '_device_exists', return_value=False)
     @mock.patch.object(shell, 'dmcrypt')
     def test_opens_mapper_when_missing(
             self, _dmcrypt, _device_exists, _register):
         result = shell._open_and_register_device(
-            '/dev/sdb', 'test-uuid', 'the-key', '/path/to/conf',
+            '/dev/sdb', 'test-uuid', 'the-key', self.config,
+            '/path/to/conf',
         )
 
         _dmcrypt.luks_open.assert_called_once_with(
-            'the-key', 'test-uuid', '/dev/sdb',
+            'the-key', 'test-uuid', '/dev/sdb', bypass_workqueues=True,
         )
         _register.assert_called_once_with(
             '/dev/sdb', 'test-uuid', '/path/to/conf',
@@ -958,7 +964,8 @@ class TestOpenAndRegisterDevice(base.TestCase):
             self, _dmcrypt, _device_exists, _register):
         """An open mapper is not opened again."""
         result = shell._open_and_register_device(
-            '/dev/sdb', 'test-uuid', 'the-key', '/path/to/conf',
+            '/dev/sdb', 'test-uuid', 'the-key', self.config,
+            '/path/to/conf',
         )
 
         _dmcrypt.luks_open.assert_not_called()
@@ -976,8 +983,25 @@ class TestOpenAndRegisterDevice(base.TestCase):
 
         with self.assertRaises(exceptions.MapperOpenError):
             shell._open_and_register_device(
-                '/dev/sdb', 'test-uuid', 'the-key', '/path/to/conf',
+                '/dev/sdb', 'test-uuid', 'the-key', self.config,
+                '/path/to/conf',
             )
+
+    @mock.patch.object(shell, '_register_boot_unlock')
+    @mock.patch.object(shell, '_device_exists', return_value=False)
+    @mock.patch.object(shell, 'dmcrypt')
+    def test_workqueue_bypass_can_be_disabled(
+            self, _dmcrypt, _device_exists, _register):
+        self.config.read_dict({'dmcrypt': {'bypass_workqueues': 'false'}})
+
+        shell._open_and_register_device(
+            '/dev/sdb', 'test-uuid', 'the-key', self.config,
+            '/path/to/conf',
+        )
+
+        _dmcrypt.luks_open.assert_called_once_with(
+            'the-key', 'test-uuid', '/dev/sdb', bypass_workqueues=False,
+        )
 
 
 class TestReuseEncryptedDevice(base.TestCase):
@@ -996,15 +1020,17 @@ class TestReuseEncryptedDevice(base.TestCase):
         args = mock.MagicMock()
         args.uuid = None
         args.config = '/path/to/conf'
+        config = mock.MagicMock()
 
         result = shell._open_existing_managed_device(
-            args, mock.MagicMock(), mock.MagicMock(), '/dev/sdb',
+            args, mock.MagicMock(), config, '/dev/sdb',
             'existing-uuid',
         )
 
         _key_unlocks_device.assert_called_once_with('managed-key', '/dev/sdb')
         _open_and_register.assert_called_once_with(
-            '/dev/sdb', 'existing-uuid', 'managed-key', '/path/to/conf',
+            '/dev/sdb', 'existing-uuid', 'managed-key', config,
+            '/path/to/conf',
         )
         self.assertEqual({'luks_uuid': 'existing-uuid'}, result)
 
@@ -1155,9 +1181,10 @@ class TestFormatDevice(base.TestCase):
 
         args = mock.MagicMock()
         args.config = '/path/to/conf'
+        config = mock.MagicMock()
 
         result = shell._format_device(
-            args, mock.MagicMock(), mock.MagicMock(), '/dev/sdb',
+            args, mock.MagicMock(), config, '/dev/sdb',
             'new-uuid', 'new-key',
         )
 
@@ -1169,7 +1196,8 @@ class TestFormatDevice(base.TestCase):
         _udevadm_rescan.assert_called_once_with('/dev/sdb')
         _udevadm_settle.assert_called_once_with('new-uuid')
         _open_and_register.assert_called_once_with(
-            '/dev/sdb', 'new-uuid', 'new-key', '/path/to/conf',
+            '/dev/sdb', 'new-uuid', 'new-key', config,
+            '/path/to/conf',
         )
         self.assertEqual({'luks_uuid': 'new-uuid'}, result)
 
@@ -1187,9 +1215,10 @@ class TestFormatDevice(base.TestCase):
             _running_in_snap):
         args = mock.MagicMock()
         args.config = '/path/to/conf'
+        config = mock.MagicMock()
 
         shell._format_device(
-            args, mock.MagicMock(), mock.MagicMock(), '/dev/sdb',
+            args, mock.MagicMock(), config, '/dev/sdb',
             'new-uuid', 'new-key',
         )
 
@@ -1199,7 +1228,8 @@ class TestFormatDevice(base.TestCase):
         _udevadm_rescan.assert_not_called()
         _udevadm_settle.assert_not_called()
         _open_and_register.assert_called_once_with(
-            '/dev/sdb', 'new-uuid', 'new-key', '/path/to/conf',
+            '/dev/sdb', 'new-uuid', 'new-key', config,
+            '/path/to/conf',
         )
 
     @mock.patch.object(shell, '_open_and_register_device')
@@ -1221,9 +1251,10 @@ class TestFormatDevice(base.TestCase):
 
         args = mock.MagicMock()
         args.config = '/path/to/conf'
+        config = mock.MagicMock()
 
         result = shell._format_device(
-            args, mock.MagicMock(), mock.MagicMock(), '/dev/sdb',
+            args, mock.MagicMock(), config, '/dev/sdb',
             'new-uuid', 'new-key',
         )
 
@@ -1231,7 +1262,8 @@ class TestFormatDevice(base.TestCase):
             '/dev/sdb', 'new-uuid', 'new-key',
         )
         _open_and_register.assert_called_once_with(
-            '/dev/sdb', 'new-uuid', 'new-key', '/path/to/conf',
+            '/dev/sdb', 'new-uuid', 'new-key', config,
+            '/path/to/conf',
         )
         self.assertEqual({'luks_uuid': 'new-uuid'}, result)
 
@@ -1461,18 +1493,20 @@ class TestEnrollBlockDevice(base.TestCase):
         args = mock.MagicMock()
         args.block_device = ['/dev/sdb']
         args.config = '/path/to/conf'
+        config = mock.MagicMock()
 
         with mock.patch.object(
                 shell, '_key_unlocks_device', return_value=True,
         ) as key_check:
             result = shell._enroll_block_device(
-                args, mock.MagicMock(), mock.MagicMock(), get_operator_key,
+                args, mock.MagicMock(), config, get_operator_key,
             )
 
         get_operator_key.assert_not_called()
         key_check.assert_called_once_with('managed-key', '/dev/sdb')
         _open_and_register.assert_called_once_with(
-            '/dev/sdb', 'test-uuid', 'managed-key', '/path/to/conf',
+            '/dev/sdb', 'test-uuid', 'managed-key', config,
+            '/path/to/conf',
         )
         self.assertEqual({'luks_uuid': 'test-uuid'}, result)
 
@@ -1496,13 +1530,14 @@ class TestEnrollBlockDevice(base.TestCase):
         args = mock.MagicMock()
         args.block_device = ['/dev/sdb']
         args.config = '/path/to/conf'
+        config = mock.MagicMock()
 
         with mock.patch.object(
                 shell, '_key_unlocks_device',
                 side_effect=can_unlock,
         ) as key_check:
             result = shell._enroll_block_device(
-                args, mock.MagicMock(), mock.MagicMock(), get_operator_key,
+                args, mock.MagicMock(), config, get_operator_key,
             )
 
         get_operator_key.assert_called_once()
@@ -1513,7 +1548,8 @@ class TestEnrollBlockDevice(base.TestCase):
             b'existing-key', 'new-managed-key', '/dev/sdb',
         )
         _open_and_register.assert_called_once_with(
-            '/dev/sdb', 'test-uuid', 'new-managed-key', '/path/to/conf',
+            '/dev/sdb', 'test-uuid', 'new-managed-key', config,
+            '/path/to/conf',
         )
         self.assertEqual({'luks_uuid': 'test-uuid'}, result)
         self.assertEqual(2, key_check.call_count)
@@ -1812,6 +1848,24 @@ class TestKVConfiguration(base.TestCase):
             str(error.exception),
         )
 
+    def test_bypass_workqueues_defaults_to_enabled(self):
+        self.assertTrue(shell._bypass_workqueues(self._config()))
+
+    def test_bypass_workqueues_can_be_disabled(self):
+        config = self._config()
+        config.read_dict({'dmcrypt': {'bypass_workqueues': 'no'}})
+
+        self.assertFalse(shell._bypass_workqueues(config))
+
+    def test_bypass_workqueues_rejects_non_boolean(self):
+        config = self._config()
+        config.read_dict({'dmcrypt': {'bypass_workqueues': 'auto'}})
+
+        with self.assertRaises(exceptions.ConfigurationError) as error:
+            shell._bypass_workqueues(config)
+
+        self.assertIn('bypass_workqueues', str(error.exception))
+
     @mock.patch.object(shell, 'get_hostname')
     def test_secret_path_is_relative_to_mount(self, _get_hostname):
         _get_hostname.return_value = 'test-host'
@@ -1923,6 +1977,21 @@ url = https://vault.example
 approle = role-id
 secret_id = secret-id
 backend =
+"""
+        with mock.patch(
+                'builtins.open', mock.mock_open(read_data=contents)):
+            with self.assertRaises(exceptions.ConfigurationError):
+                shell.get_config('/path/to/conf')
+
+    def test_get_config_invalid_bypass_workqueues_is_controlled(self):
+        contents = """[vault]
+url = https://vault.example
+approle = role-id
+secret_id = secret-id
+backend = vaultlocker
+
+[dmcrypt]
+bypass_workqueues = sometimes
 """
         with mock.patch(
                 'builtins.open', mock.mock_open(read_data=contents)):
